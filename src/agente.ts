@@ -106,6 +106,13 @@ Antes de se candidatar a qualquer vaga, SEMPRE use a tool "pontuar_vaga" passand
 - VARIE a forma de escrever (sinonimos, estrutura frasal), mas mantenha o conteudo fiel.
 - Se o formulario pedir algo que NAO esta nas respostas pre-definidas, use os dados do perfil do candidato.
 
+## Carta de Apresentacao / Cover Letter (IMPORTANTE)
+- Se o formulario tiver campo de "carta de apresentacao", "cover letter", "por que voce quer trabalhar aqui" (campo de texto longo), ou "apresente-se":
+  - Use gerar_cover_letter passando a descricao da vaga, titulo e empresa.
+  - A tool retorna texto personalizado pronto para colar no campo.
+  - O texto usa APENAS dados reais do candidato.
+- Para campos CURTOS (1-2 linhas), NAO use a cover letter — responda diretamente com base no perfil.
+
 ## Filtro de Vagas Ja Vistas
 - SEMPRE use verificar_vaga_ja_vista ANTES de analisar uma vaga em detalhe.
 - Se a vaga ja foi vista (mesmo que nao tenha sido aplicada), PULE para a proxima.

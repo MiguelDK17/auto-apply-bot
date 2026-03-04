@@ -14,6 +14,7 @@ import {
 import { log } from './logger.js';
 import { notificarCandidatura } from './notificacoes.js';
 import { gerarCurriculoTailored } from './curriculo-tailored.js';
+import { gerarCoverLetter } from './cover-letter.js';
 import type { Perfil, RespostasPredefinidas } from './types.js';
 
 // Configuração do Gemini passada pelo index.ts na criação do executor
@@ -293,6 +294,29 @@ export const customToolDeclarations: FunctionDeclaration[] = [
       required: ['descricao_vaga'],
     },
   },
+  {
+    name: 'gerar_cover_letter',
+    description:
+      'Gera uma carta de apresentacao personalizada para a vaga. Retorna texto pronto para colar no campo do formulario. Use quando o formulario pedir "carta de apresentacao", "cover letter", "por que voce quer trabalhar aqui" (campo longo), ou "apresente-se".',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        descricao_vaga: {
+          type: Type.STRING,
+          description: 'Descricao da vaga (requisitos, responsabilidades)',
+        },
+        titulo_vaga: {
+          type: Type.STRING,
+          description: 'Titulo da vaga',
+        },
+        empresa: {
+          type: Type.STRING,
+          description: 'Nome da empresa',
+        },
+      },
+      required: ['descricao_vaga', 'empresa', 'titulo_vaga'],
+    },
+  },
 ];
 
 // ========== EXECUTOR DAS TOOLS ==========
@@ -507,6 +531,40 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
           return JSON.stringify(respostasUteis, null, 2);
         } catch {
           return 'ERRO: Arquivo config/respostas.json nao encontrado.';
+        }
+      }
+
+      case 'gerar_cover_letter': {
+        const descricao = args.descricao_vaga as string;
+        const empresa = args.empresa as string;
+        const titulo = args.titulo_vaga as string;
+
+        if (!_geminiApiKey || !_geminiModel) {
+          return 'ERRO: Configuracao do Gemini nao disponivel para gerar cover letter.';
+        }
+
+        try {
+          const resultado = await gerarCoverLetter(
+            _geminiApiKey,
+            _geminiModel,
+            perfil,
+            descricao,
+            empresa,
+            titulo,
+          );
+
+          log('TOOL', `Cover letter ${resultado.fonte === 'cache' ? '(cache)' : '(nova)'} para ${titulo} — ${empresa}`);
+
+          return JSON.stringify({
+            sucesso: true,
+            texto: resultado.texto,
+            fonte: resultado.fonte,
+            instrucao: 'Cole este texto no campo de carta de apresentacao do formulario. Voce pode fazer pequenos ajustes de tom se necessario.',
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          log('ERRO', `Falha na cover letter: ${msg}`);
+          return `ERRO: ${msg}. Escreva uma resposta curta baseada no perfil do candidato como fallback.`;
         }
       }
 
