@@ -36,6 +36,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 | **Recruiter Messaging** | Envia mensagem personalizada para recrutadores no LinkedIn (nota de conexão) |
 | **Token Cost Tracking** | Registra tokens de cada chamada ao Gemini e calcula custo em USD |
 | **Multi-LLM** | Adapter pattern: Gemini (padrão), Ollama (local/grátis) ou OpenAI-compatible como provider auxiliar |
+| **PII Anonymization** | Anonimiza nome, email, telefone e links antes de enviar ao LLM — restaura no resultado final |
 
 ---
 
@@ -279,6 +280,29 @@ Adaptado do [beatwad](https://medium.com/@beatwad): após se candidatar a uma va
 
 ---
 
+## 🔐 Anonimização de PII
+
+Adaptado do [beatwad](https://medium.com/@beatwad): antes de enviar dados ao LLM, o bot substitui informações pessoais por placeholders. Após receber a resposta, restaura os dados reais.
+
+| Campo | Placeholder |
+|---|---|
+| Nome completo | `[CANDIDATO]` |
+| Email | `candidato@email.example` |
+| Telefone | `(00) 00000-0000` |
+| LinkedIn | `https://linkedin.com/in/candidato` |
+| GitHub | `https://github.com/candidato` |
+| Portfolio | `https://candidato.dev` |
+
+**Onde é aplicado:**
+- Cover letter (prompt + de-anonimização do resultado)
+- Currículo tailored (HTML template + prompt + de-anonimização antes de gerar PDF)
+- Mensagem para recrutadores (prompt + de-anonimização)
+- System prompt do agente principal (PII de contato removido, disponível via tool sob demanda)
+
+**Dados profissionais** (stack, experiências, resumo) continuam visíveis no prompt — são necessários para gerar conteúdo relevante.
+
+---
+
 ## 🔀 Multi-LLM (Adapter Pattern)
 
 Adaptado do [AIHawk](https://github.com/feder-cr/Auto_Jobs_Applier_AIHawk): o agente principal sempre usa **Gemini** (precisa do SDK de function calling), mas as tarefas auxiliares (cover letter, currículo tailored, mensagem para recrutador) podem usar **qualquer provider**:
@@ -332,6 +356,7 @@ auto-apply-bot/
 │   ├── mensagem-recrutador.ts  # Mensagem personalizada para recrutadores
 │   ├── token-tracker.ts  # Tracking de custo de tokens (USD)
 │   ├── llm-adapter.ts   # Multi-LLM adapter (Gemini/Ollama/OpenAI)
+│   ├── anonimizacao.ts  # Anonimização de PII (nome, email, telefone, links)
 │   ├── database.ts       # SQLite (candidaturas, vagas vistas, cache, mensagens)
 │   ├── dashboard.ts      # Dashboard web
 │   ├── mcp-client.ts     # Conexão Playwright MCP
@@ -369,7 +394,7 @@ auto-apply-bot/
 - [ ] Blacklist de empresas/títulos
 - [x] ~~Mensagem automática para recrutadores~~
 - [x] ~~Multi-LLM (Gemini + Ollama local como fallback)~~
-- [ ] Anonimização de dados antes de enviar ao LLM
+- [x] ~~Anonimização de dados antes de enviar ao LLM~~
 - [ ] Docker support
 - [x] ~~Tracking de custo de tokens~~
 
