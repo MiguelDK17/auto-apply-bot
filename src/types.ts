@@ -75,6 +75,12 @@ export interface AgenteConfig {
   // Cron (desativado por padrão)
   cronAtivo: boolean;
   cronHorario: string;
+  // Multi-LLM (opcional — provider auxiliar para cover letter, currículo, mensagem)
+  llmAuxProvider: string;
+  llmAuxModel: string;
+  ollamaUrl: string;
+  openaiApiKey: string;
+  openaiBaseUrl: string;
 }
 
 export interface RespostasPredefinidas {

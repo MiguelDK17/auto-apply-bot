@@ -11,6 +11,7 @@ import { configurarTelegram, notificarResumo, notificarErro } from './notificaco
 import { configurarEmail, enviarRelatorioEmail, gerarHTMLRelatorio } from './email.js';
 import { iniciarCron, pararCron } from './cron.js';
 import { exibirResumoTokens, obterCustoTotal, obterTokensTotal, obterTotalChamadas, resetarTracker } from './token-tracker.js';
+import { configurarLLMAux } from './llm-adapter.js';
 import type { Perfil, SitesConfig, AgenteConfig } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -57,6 +58,12 @@ function validarEnv(): AgenteConfig {
     // Cron
     cronAtivo: process.env.CRON_ATIVO === 'true',
     cronHorario: process.env.CRON_HORARIO || '09:00',
+    // Multi-LLM
+    llmAuxProvider: process.env.LLM_AUX_PROVIDER || 'gemini',
+    llmAuxModel: process.env.LLM_AUX_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+    ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
+    openaiApiKey: process.env.OPENAI_API_KEY || '',
+    openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   };
 }
 
@@ -180,6 +187,17 @@ async function main() {
   // Configura notificacoes (opcionais)
   configurarTelegram(config.telegramBotToken, config.telegramChatId);
   configurarEmail(config.smtpHost, config.smtpPort, config.smtpUser, config.smtpPass, config.emailDestinatario);
+
+  // Configura LLM auxiliar (cover letter, currículo, mensagem recrutador)
+  configurarLLMAux({
+    provider: config.llmAuxProvider,
+    model: config.llmAuxModel,
+    geminiApiKey: config.geminiApiKey,
+    geminiModel: config.geminiModel,
+    ollamaUrl: config.ollamaUrl,
+    openaiApiKey: config.openaiApiKey,
+    openaiBaseUrl: config.openaiBaseUrl,
+  });
 
   // Verifica se é modo cron ou execução única
   if (config.cronAtivo) {

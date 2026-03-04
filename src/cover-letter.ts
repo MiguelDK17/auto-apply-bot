@@ -1,7 +1,6 @@
-import { GoogleGenAI } from '@google/genai';
 import { createHash } from 'crypto';
 import { log } from './logger.js';
-import { registrarUsoTokens } from './token-tracker.js';
+import { gerarTextoAux } from './llm-adapter.js';
 import type { Perfil } from './types.js';
 
 // Cache em memória para evitar gerar a mesma cover letter 2x
@@ -51,8 +50,8 @@ LEMBRETE: Se a vaga pedir tecnologia que o candidato NAO tem, NAO mencione. Foqu
 // ========== GERACAO ==========
 
 export async function gerarCoverLetter(
-  geminiApiKey: string,
-  geminiModel: string,
+  _geminiApiKey: string,
+  _geminiModel: string,
   perfil: Perfil,
   descricaoVaga: string,
   empresa: string,
@@ -71,17 +70,10 @@ export async function gerarCoverLetter(
 
   log('TOOL', `Gerando cover letter para ${tituloVaga} na ${empresa}...`);
 
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
   const prompt = buildCoverLetterPrompt(perfil, descricaoVaga, empresa, tituloVaga);
+  const response = await gerarTextoAux(prompt, 'cover_letter');
 
-  const response = await ai.models.generateContent({
-    model: geminiModel,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-  });
-
-  registrarUsoTokens(geminiModel, response.usageMetadata, 'cover_letter');
-
-  let texto = response.text?.trim() ?? '';
+  let texto = response.text;
 
   // Limpar possíveis artefatos de markdown
   if (texto.startsWith('```')) {
@@ -108,13 +100,11 @@ export async function gerarCoverLetter(
 
   if (fabricadas.length > 0) {
     log('WARN', `Cover letter mencionou skills fabricadas: ${fabricadas.join(', ')}. Regenerando...`);
-    // Tenta mais uma vez com reforço
-    const response2 = await ai.models.generateContent({
-      model: geminiModel,
-      contents: [{ role: 'user', parts: [{ text: prompt + '\n\nATENCAO REDOBRADA: Voce ERROU na tentativa anterior e mencionou tecnologias que o candidato NAO possui. Use SOMENTE: ' + perfil.stack_principal.join(', ') }] }],
-    });
-    registrarUsoTokens(geminiModel, response2.usageMetadata, 'cover_letter_retry');
-    texto = response2.text?.trim() ?? texto;
+    const response2 = await gerarTextoAux(
+      prompt + '\n\nATENCAO REDOBRADA: Voce ERROU na tentativa anterior e mencionou tecnologias que o candidato NAO possui. Use SOMENTE: ' + perfil.stack_principal.join(', '),
+      'cover_letter_retry',
+    );
+    texto = response2.text;
     if (texto.startsWith('```')) {
       texto = texto.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
     }

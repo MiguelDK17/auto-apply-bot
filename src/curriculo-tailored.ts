@@ -1,11 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { createHash } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { log } from './logger.js';
-import { registrarUsoTokens } from './token-tracker.js';
+import { gerarTextoAux } from './llm-adapter.js';
 import type { Perfil } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -192,20 +191,14 @@ export async function gerarCurriculoTailored(
   // Chamar Gemini para otimizar o HTML
   log('TOOL', `Gerando curriculo tailored para vaga (hash: ${hash})...`);
 
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
   const prompt = buildTailoringPrompt(htmlBase, descricaoVaga, perfil);
 
   let htmlOtimizado: string;
 
   try {
-    const response = await ai.models.generateContent({
-      model: geminiModel,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    });
+    const response = await gerarTextoAux(prompt, 'curriculo_tailored');
 
-    registrarUsoTokens(geminiModel, response.usageMetadata, 'curriculo_tailored');
-
-    htmlOtimizado = response.text?.trim() ?? '';
+    htmlOtimizado = response.text;
 
     // Limpar possíveis artefatos de markdown
     if (htmlOtimizado.startsWith('```html')) {

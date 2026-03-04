@@ -4,10 +4,9 @@
 //
 // Limite do LinkedIn: 300 caracteres para nota de conexão.
 
-import { GoogleGenAI } from '@google/genai';
 import { createHash } from 'crypto';
 import { log } from './logger.js';
-import { registrarUsoTokens } from './token-tracker.js';
+import { gerarTextoAux } from './llm-adapter.js';
 import type { Perfil } from './types.js';
 
 // Cache em memória para evitar gerar a mesma mensagem 2x
@@ -98,18 +97,13 @@ export async function gerarMensagemRecrutador(
 
   log('TOOL', `Gerando mensagem para recrutador ${nomeRecrutador || '(sem nome)'} na ${empresa}...`);
 
-  const ai = new GoogleGenAI({ apiKey: geminiApiKey });
   const prompt = buildMensagemRecrutadorPrompt(
     perfil, nomeRecrutador, cargoRecrutador, empresa, tituloVaga, descricaoVaga,
   );
 
-  const response = await ai.models.generateContent({
-    model: geminiModel,
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-  });
-  registrarUsoTokens(geminiModel, response.usageMetadata, 'mensagem_recrutador');
+  const response = await gerarTextoAux(prompt, 'mensagem_recrutador');
 
-  let texto = response.text?.trim() ?? '';
+  let texto = response.text;
 
   // Limpar artefatos de markdown
   if (texto.startsWith('```')) {
@@ -154,12 +148,11 @@ export async function gerarMensagemRecrutador(
 
   if (fabricadas.length > 0) {
     log('WARN', `Mensagem recrutador mencionou skills fabricadas: ${fabricadas.join(', ')}. Regenerando...`);
-    const response2 = await ai.models.generateContent({
-      model: geminiModel,
-      contents: [{ role: 'user', parts: [{ text: prompt + '\n\nATENCAO: Voce mencionou tecnologias FALSAS. Use SOMENTE: ' + perfil.stack_principal.join(', ') + '. MAXIMO 280 caracteres.' }] }],
-    });
-    registrarUsoTokens(geminiModel, response2.usageMetadata, 'mensagem_recrutador_retry');
-    texto = response2.text?.trim() ?? texto;
+    const response2 = await gerarTextoAux(
+      prompt + '\n\nATENCAO: Voce mencionou tecnologias FALSAS. Use SOMENTE: ' + perfil.stack_principal.join(', ') + '. MAXIMO 280 caracteres.',
+      'mensagem_recrutador_retry',
+    );
+    texto = response2.text;
     if (texto.startsWith('```')) {
       texto = texto.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
     }
