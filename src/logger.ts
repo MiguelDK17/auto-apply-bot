@@ -19,12 +19,12 @@ export function inicializarLogger(): void {
   log('INFO', 'Logger inicializado');
 }
 
-export function log(nivel: 'INFO' | 'WARN' | 'ERRO' | 'TOOL' | 'AGENTE', mensagem: string): void {
+export function log(nivel: 'INFO' | 'WARN' | 'ERRO' | 'TOOL' | 'AGENTE' | 'FALHA', mensagem: string): void {
   const timestamp = new Date().toISOString();
   const linha = `[${timestamp}] [${nivel}] ${mensagem}\n`;
 
   // Sempre imprime no console
-  if (nivel === 'ERRO') {
+  if (nivel === 'ERRO' || nivel === 'FALHA') {
     process.stderr.write(linha);
   } else {
     process.stdout.write(linha);

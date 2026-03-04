@@ -19,11 +19,22 @@ import { log } from './logger.js';
 import { notificarCandidatura } from './notificacoes.js';
 import { gerarCurriculoTailored } from './curriculo-tailored.js';
 import { gerarCoverLetter } from './cover-letter.js';
+import {
+  ehFalhaPermanente,
+  ehFalhaRetriavel,
+  calcularBackoff,
+  FALHAS_PERMANENTES,
+  FALHAS_RETRIAVEIS,
+  MAX_TENTATIVAS,
+} from './erros.js';
 import type { Perfil, RespostasPredefinidas } from './types.js';
 
 // Configuração do Gemini passada pelo index.ts na criação do executor
 let _geminiApiKey = '';
 let _geminiModel = '';
+
+// Mapa de tentativas por URL para controle de retry (adaptado do ApplyPilot: attempts tracking)
+const tentativasPorUrl = new Map<string, number>();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -367,6 +378,41 @@ export const customToolDeclarations: FunctionDeclaration[] = [
       required: ['pergunta', 'tipo_campo', 'resposta'],
     },
   },
+  {
+    name: 'reportar_falha',
+    description:
+      'Reporta uma falha encontrada durante o processo de candidatura. Classifica automaticamente como PERMANENTE (nunca retentar) ou RETRIAVEL (tentar novamente). Use quando encontrar erros como: vaga expirada, CAPTCHA, timeout, erro de rede, formulario incompativel, etc. Codigos permanentes: vaga_expirada, captcha, sessao_expirada, localizacao_inelegivel, ja_aplicou, conta_necessaria, nao_e_vaga, sso_obrigatorio, site_bloqueado, cloudflare, formulario_incompativel, vaga_interna, idioma_incompativel. Codigos retriaveis: timeout, erro_rede, pagina_nao_carregou, erro_servidor, elemento_nao_encontrado, erro_upload, erro_mcp.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        url_vaga: {
+          type: Type.STRING,
+          description: 'URL da vaga onde ocorreu a falha',
+        },
+        codigo_falha: {
+          type: Type.STRING,
+          description: 'Codigo da falha (ex: vaga_expirada, captcha, timeout, erro_rede)',
+        },
+        descricao: {
+          type: Type.STRING,
+          description: 'Descricao livre do que aconteceu',
+        },
+        titulo_vaga: {
+          type: Type.STRING,
+          description: 'Titulo da vaga (se disponivel)',
+        },
+        empresa: {
+          type: Type.STRING,
+          description: 'Nome da empresa (se disponivel)',
+        },
+        plataforma: {
+          type: Type.STRING,
+          description: 'Plataforma (Gupy, Vagas.com, etc.)',
+        },
+      },
+      required: ['url_vaga', 'codigo_falha', 'descricao'],
+    },
+  },
 ];
 
 // ========== EXECUTOR DAS TOOLS ==========
@@ -642,6 +688,89 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
           return 'CACHEADO: Resposta salva no cache para reutilizacao futura.';
         }
         return 'JA_EXISTE: Essa pergunta ja existe no cache.';
+      }
+
+      case 'reportar_falha': {
+        const urlVaga = args.url_vaga as string;
+        const codigoFalha = args.codigo_falha as string;
+        const descricaoFalha = args.descricao as string;
+
+        if (ehFalhaPermanente(codigoFalha)) {
+          // Falha permanente: registra como vista e nunca mais tenta
+          // (ApplyPilot usa attempts=99 como sentinela; nós registramos em vagas_vistas)
+          registrarVagaVista({
+            url: urlVaga,
+            titulo_vaga: (args.titulo_vaga as string) || undefined,
+            empresa: (args.empresa as string) || undefined,
+            plataforma: (args.plataforma as string) || undefined,
+            motivo_pulo: `PERMANENTE:${codigoFalha} — ${descricaoFalha}`,
+          });
+          tentativasPorUrl.delete(urlVaga);
+          log('FALHA', `PERMANENTE [${codigoFalha}]: ${descricaoFalha} — ${urlVaga}`);
+
+          return JSON.stringify({
+            tipo: 'PERMANENTE',
+            acao: 'PULAR',
+            codigo: codigoFalha,
+            mensagem: `Falha permanente (${codigoFalha}). Vaga registrada como vista — nunca sera retentada. Passe para a proxima vaga.`,
+          });
+        }
+
+        if (ehFalhaRetriavel(codigoFalha)) {
+          const tentativasAtuais = (tentativasPorUrl.get(urlVaga) || 0) + 1;
+          tentativasPorUrl.set(urlVaga, tentativasAtuais);
+
+          if (tentativasAtuais >= MAX_TENTATIVAS) {
+            // Esgotou tentativas — trata como permanente
+            registrarVagaVista({
+              url: urlVaga,
+              titulo_vaga: (args.titulo_vaga as string) || undefined,
+              empresa: (args.empresa as string) || undefined,
+              plataforma: (args.plataforma as string) || undefined,
+              motivo_pulo: `ESGOTADO:${codigoFalha} — ${tentativasAtuais} tentativas — ${descricaoFalha}`,
+            });
+            tentativasPorUrl.delete(urlVaga);
+            log('FALHA', `ESGOTADO [${codigoFalha}]: ${tentativasAtuais}/${MAX_TENTATIVAS} tentativas — ${urlVaga}`);
+
+            return JSON.stringify({
+              tipo: 'ESGOTADO',
+              acao: 'PULAR',
+              codigo: codigoFalha,
+              tentativas: tentativasAtuais,
+              mensagem: `Maximo de ${MAX_TENTATIVAS} tentativas atingido para esta vaga. Passe para a proxima.`,
+            });
+          }
+
+          const backoffMs = calcularBackoff(tentativasAtuais);
+          log('FALHA', `RETRIAVEL [${codigoFalha}]: tentativa ${tentativasAtuais}/${MAX_TENTATIVAS}, backoff ${backoffMs}ms — ${urlVaga}`);
+
+          // Aguarda backoff antes de liberar o agente para retentar
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+
+          return JSON.stringify({
+            tipo: 'RETRIAVEL',
+            acao: 'RETENTAR',
+            codigo: codigoFalha,
+            tentativa_atual: tentativasAtuais,
+            max_tentativas: MAX_TENTATIVAS,
+            backoff_aplicado_ms: backoffMs,
+            mensagem: `Falha retriavel (${codigoFalha}). Tentativa ${tentativasAtuais}/${MAX_TENTATIVAS}. Backoff de ${Math.round(backoffMs / 1000)}s ja aplicado. Tente novamente agora.`,
+          });
+        }
+
+        // Código desconhecido — trata como permanente por segurança
+        log('FALHA', `DESCONHECIDO [${codigoFalha}]: ${descricaoFalha} — ${urlVaga}`);
+        registrarVagaVista({
+          url: urlVaga,
+          motivo_pulo: `DESCONHECIDO:${codigoFalha} — ${descricaoFalha}`,
+        });
+
+        return JSON.stringify({
+          tipo: 'DESCONHECIDO',
+          acao: 'PULAR',
+          codigo: codigoFalha,
+          mensagem: `Codigo de falha desconhecido (${codigoFalha}). Pule esta vaga por seguranca.`,
+        });
       }
 
       case 'gerar_cover_letter': {

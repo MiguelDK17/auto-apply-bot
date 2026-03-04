@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { customToolDeclarations, criarExecutorDeTools } from './tools.js';
 import { log } from './logger.js';
+import { classificarErroAPI, calcularBackoffRateLimit, MAX_TENTATIVAS } from './erros.js';
 import type { AgenteConfig, Perfil, SitesConfig } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -144,11 +145,45 @@ ${JSON.stringify(perfil, null, 2)}
 ## Sites para Processar
 ${JSON.stringify(sites.sites.filter(s => s.ativo), null, 2)}
 
+## Classificacao de Falhas (IMPORTANTE)
+Quando encontrar um problema durante a candidatura, use a tool "reportar_falha" com o codigo apropriado.
+O sistema classifica automaticamente e decide se deve pular ou retentar.
+
+### Falhas PERMANENTES (nunca retentar):
+- vaga_expirada: A vaga nao esta mais disponivel
+- captcha: CAPTCHA detectado na pagina
+- sessao_expirada: Sessao expirou, precisa relogar
+- localizacao_inelegivel: Vaga presencial/hibrida fora de Uberlandia
+- ja_aplicou: Candidato ja se candidatou (detectado pelo site, nao pelo banco)
+- conta_necessaria: Exige cadastro em plataforma especifica
+- nao_e_vaga: A pagina nao e uma vaga de emprego
+- sso_obrigatorio: Requer login SSO (Google, Microsoft)
+- site_bloqueado: Site bloqueou o acesso
+- cloudflare: Protecao anti-bot ativa
+- formulario_incompativel: Formulario que voce nao consegue preencher
+- vaga_interna: Exclusiva para funcionarios
+- idioma_incompativel: Exige idioma que o candidato nao tem
+
+### Falhas RETRIAVEIS (tente novamente, max ${MAX_TENTATIVAS}x):
+- timeout: Pagina demorou para carregar
+- erro_rede: Erro de conexao
+- pagina_nao_carregou: Pagina carregou incompleta
+- erro_servidor: Erro 500/502/503 do site
+- elemento_nao_encontrado: Botao ou campo sumiu da pagina
+- erro_upload: Falha ao enviar curriculo/arquivo
+- erro_mcp: Erro de comunicacao com o navegador
+
+### Como usar:
+1. Encontrou problema → use reportar_falha com url_vaga + codigo_falha + descricao
+2. Se a resposta disser PULAR → passe para a proxima vaga
+3. Se a resposta disser RETENTAR → tente a mesma acao novamente (backoff ja foi aplicado)
+4. NAO tente resolver falhas permanentes — pule e siga em frente
+
 ## Ao Finalizar
 Quando terminar todos os sites ou atingir o limite diario, faca um resumo:
 - Quantas candidaturas foram feitas
 - Em quais empresas/vagas
-- Se houve algum erro ou bloqueio
+- Se houve algum erro ou bloqueio (inclua os codigos de falha)
 `;
 }
 
@@ -190,6 +225,7 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
 
   let iteracao = 0;
   let respostaFinal = '';
+  let errosConsecutivos = 0;
 
   while (iteracao < MAX_ITERACOES) {
     iteracao++;
@@ -207,6 +243,9 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
           ],
         },
       });
+
+      // Reset do contador — iteração bem sucedida
+      errosConsecutivos = 0;
 
       const candidate = response.candidates?.[0];
       if (!candidate?.content) {
@@ -289,16 +328,29 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
       const mensagemErro = error instanceof Error ? error.message : String(error);
       log('ERRO', `Erro na iteracao ${iteracao}: ${mensagemErro}`);
 
-      // Se for erro de rate limit, aguarda e tenta novamente
-      if (mensagemErro.includes('429') || mensagemErro.includes('RATE_LIMIT')) {
-        log('AGENTE', 'Rate limit atingido. Aguardando 30 segundos...');
-        await new Promise(resolve => setTimeout(resolve, 30000));
+      const tipoErro = classificarErroAPI(mensagemErro);
+
+      if (tipoErro === 'rate_limit') {
+        errosConsecutivos++;
+        const backoff = calcularBackoffRateLimit(errosConsecutivos);
+        log('AGENTE', `Rate limit atingido (${errosConsecutivos}x). Aguardando ${Math.round(backoff / 1000)}s...`);
+        await new Promise(resolve => setTimeout(resolve, backoff));
         continue;
       }
 
-      // Salva estado para recovery em caso de erro
-      salvarRecovery(iteracao, sitesAtivos.map(s => s.nome));
+      if (tipoErro === 'rede') {
+        errosConsecutivos++;
+        if (errosConsecutivos <= MAX_TENTATIVAS) {
+          const backoff = 5000 * Math.pow(2, errosConsecutivos - 1);
+          log('AGENTE', `Erro de rede (${errosConsecutivos}/${MAX_TENTATIVAS}). Retentando em ${Math.round(backoff / 1000)}s...`);
+          await new Promise(resolve => setTimeout(resolve, backoff));
+          continue;
+        }
+        log('AGENTE', `Erro de rede persistente apos ${errosConsecutivos} tentativas. Finalizando.`);
+      }
 
+      // Erro fatal ou tentativas esgotadas
+      salvarRecovery(iteracao, sitesAtivos.map(s => s.nome));
       respostaFinal = `Erro durante execucao: ${mensagemErro}`;
       break;
     }
