@@ -31,6 +31,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 | **Sliding Window** | Gerencia contexto do Gemini descartando histórico antigo — evita estouro de tokens |
 | **Pre-defined Q&A** | Respostas base para perguntas comuns em formulários |
 | **Response Variation** | Varia respostas automaticamente para parecer humano |
+| **Error Classification** | Classifica falhas como permanentes (pula) ou retriáveis (retenta com backoff) |
 
 ---
 
@@ -47,7 +48,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 │                   tools.ts                       │
 │  pontuar_vaga | gerar_curriculo_tailored         │
 │  gerar_cover_letter | buscar_resposta_cache      │
-│  registrar_candidatura | salvar_screenshot       │
+│  registrar_candidatura | reportar_falha          │
 ├─────────────────────────────────────────────────┤
 │              Playwright MCP                      │
 │        (browser automation via CDP)              │
@@ -210,6 +211,35 @@ Inspirado no AIHawk (29k stars), o bot cacheia respostas de formulário no SQLit
 
 ---
 
+## 🛡️ Classificação de Falhas
+
+Adaptado do [ApplyPilot](https://github.com/nicognaW/ApplyPilot), o bot classifica erros automaticamente para decidir se deve pular ou retentar:
+
+### Falhas Permanentes (nunca retenta)
+| Código | Descrição |
+|---|---|
+| `vaga_expirada` | Vaga não está mais disponível |
+| `captcha` | CAPTCHA detectado na página |
+| `sessao_expirada` | Sessão expirou, precisa relogar |
+| `ja_aplicou` | Candidato já se candidatou (detectado pelo site) |
+| `sso_obrigatorio` | Requer login SSO |
+| `site_bloqueado` | Site bloqueou acesso |
+| `cloudflare` | Proteção anti-bot ativa |
+| `formulario_incompativel` | Formulário não suportado |
+
+### Falhas Retriáveis (max 3 tentativas com backoff exponencial)
+| Código | Descrição |
+|---|---|
+| `timeout` | Página demorou para carregar |
+| `erro_rede` | Erro de conexão |
+| `erro_servidor` | HTTP 500/502/503 |
+| `elemento_nao_encontrado` | Elemento sumiu da página |
+| `erro_upload` | Falha no upload de arquivo |
+
+**Melhoria sobre o ApplyPilot**: backoff exponencial (5s → 15s → 45s) em vez de retry imediato.
+
+---
+
 ## 📁 Estrutura do Projeto
 
 ```
@@ -220,6 +250,7 @@ auto-apply-bot/
 │   ├── tools.ts          # Custom tools (scoring, CV, screenshot, cache...)
 │   ├── curriculo-tailored.ts  # Geração de currículo personalizado por vaga
 │   ├── cover-letter.ts   # Geração de carta de apresentação por vaga
+│   ├── erros.ts          # Classificação de falhas (permanentes vs retriáveis)
 │   ├── database.ts       # SQLite (candidaturas, vagas vistas, cache)
 │   ├── dashboard.ts      # Dashboard web
 │   ├── mcp-client.ts     # Conexão Playwright MCP
