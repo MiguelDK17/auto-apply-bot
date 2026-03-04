@@ -109,9 +109,12 @@ Antes de se candidatar a qualquer vaga, SEMPRE use a tool "pontuar_vaga" passand
 - Isso economiza tempo evitando reanalisar vagas ja descartadas em execucoes anteriores.
 
 ## Regras de Upload de Curriculo (IMPORTANTE)
-O candidato possui MULTIPLOS curriculos otimizados para diferentes tipos de vaga.
-- ANTES de fazer upload, SEMPRE use a tool "escolher_curriculo" passando um resumo da vaga.
-- A tool retornara o caminho do PDF mais adequado para aquela vaga especifica.
+O sistema gera um curriculo PERSONALIZADO para cada vaga usando IA.
+- ANTES de fazer upload, SEMPRE tente usar "gerar_curriculo_tailored" passando a descricao COMPLETA da vaga.
+  - Copie o maximo de detalhes da vaga (requisitos, responsabilidades, tecnologias) para o campo descricao_vaga.
+  - A tool gera um PDF otimizado para ATS destacando as skills relevantes para AQUELA vaga.
+  - O curriculo so usa dados REAIS do candidato — nunca inventa skills.
+- Se gerar_curriculo_tailored FALHAR, use "escolher_curriculo" como fallback (seleciona entre curriculos pre-prontos).
 - Use browser_upload_file com o caminho retornado pela tool.
 - Se browser_upload_file nao estiver disponivel, informe o caminho para upload manual.
 
@@ -136,7 +139,7 @@ export async function executarAgente(
   config: AgenteConfig,
 ): Promise<string> {
   const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
-  const executarTool = criarExecutorDeTools(perfil);
+  const executarTool = criarExecutorDeTools(perfil, config.geminiApiKey, config.geminiModel);
   const systemPrompt = buildSystemPrompt(perfil, sites, config);
 
   const sitesAtivos = sites.sites.filter(s => s.ativo);

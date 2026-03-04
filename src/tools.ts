@@ -13,7 +13,12 @@ import {
 } from './database.js';
 import { log } from './logger.js';
 import { notificarCandidatura } from './notificacoes.js';
+import { gerarCurriculoTailored } from './curriculo-tailored.js';
 import type { Perfil, RespostasPredefinidas } from './types.js';
+
+// Configuração do Gemini passada pelo index.ts na criação do executor
+let _geminiApiKey = '';
+let _geminiModel = '';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -265,11 +270,36 @@ export const customToolDeclarations: FunctionDeclaration[] = [
       properties: {},
     },
   },
+  {
+    name: 'gerar_curriculo_tailored',
+    description:
+      'Gera um curriculo PDF personalizado para a vaga especifica. O curriculo e reescrito por IA para destacar as skills relevantes para ESTA vaga, mantendo APENAS dados reais do candidato. Use ANTES de fazer upload do curriculo. Se falhar, faca fallback para escolher_curriculo.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        descricao_vaga: {
+          type: Type.STRING,
+          description: 'Descricao COMPLETA da vaga (copie o maximo de detalhes: requisitos, responsabilidades, tecnologias, senioridade)',
+        },
+        titulo_vaga: {
+          type: Type.STRING,
+          description: 'Titulo da vaga (ex: Desenvolvedor Backend Java)',
+        },
+        empresa: {
+          type: Type.STRING,
+          description: 'Nome da empresa',
+        },
+      },
+      required: ['descricao_vaga'],
+    },
+  },
 ];
 
 // ========== EXECUTOR DAS TOOLS ==========
 
-export function criarExecutorDeTools(perfil: Perfil) {
+export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, geminiModel?: string) {
+  if (geminiApiKey) _geminiApiKey = geminiApiKey;
+  if (geminiModel) _geminiModel = geminiModel;
   return async function executarTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
       case 'obter_perfil_candidato': {
@@ -477,6 +507,40 @@ export function criarExecutorDeTools(perfil: Perfil) {
           return JSON.stringify(respostasUteis, null, 2);
         } catch {
           return 'ERRO: Arquivo config/respostas.json nao encontrado.';
+        }
+      }
+
+      case 'gerar_curriculo_tailored': {
+        const descricao = args.descricao_vaga as string;
+        const titulo = (args.titulo_vaga as string) || '';
+        const empresa = (args.empresa as string) || '';
+
+        if (!_geminiApiKey || !_geminiModel) {
+          log('ERRO', 'Curriculo tailored: API key ou modelo nao configurados');
+          return 'ERRO: Configuracao do Gemini nao disponivel. Use escolher_curriculo como fallback.';
+        }
+
+        try {
+          const resultado = await gerarCurriculoTailored(
+            _geminiApiKey,
+            _geminiModel,
+            perfil,
+            descricao,
+          );
+
+          log('TOOL', `Curriculo tailored ${resultado.fonte === 'cache' ? '(cache)' : '(novo)'}: ${resultado.caminhoPDF}`);
+
+          return JSON.stringify({
+            sucesso: true,
+            caminho: resultado.caminhoPDF,
+            caminho_html: resultado.caminhoHTML,
+            fonte: resultado.fonte,
+            motivo: `Curriculo personalizado ${resultado.fonte === 'cache' ? 'recuperado do cache' : 'gerado com sucesso'} para: ${titulo || 'vaga'} ${empresa ? `na ${empresa}` : ''}.`,
+          });
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          log('ERRO', `Falha no curriculo tailored: ${msg}`);
+          return `ERRO: ${msg}. Use escolher_curriculo como fallback.`;
         }
       }
 

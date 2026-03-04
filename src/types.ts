@@ -1,3 +1,10 @@
+export interface Experiencia {
+  empresa: string;
+  cargo: string;
+  periodo: string;
+  descricao: string;
+}
+
 export interface Perfil {
   nome: string;
   email: string;
@@ -15,6 +22,9 @@ export interface Perfil {
   cidade: string;
   disponibilidade: string;
   palavras_chave_busca: string[];
+  experiencias?: Experiencia[];
+  bancos_de_dados?: string[];
+  metodologias?: string[];
   informacoes_extras?: Record<string, string>;
 }
 
