@@ -73,7 +73,9 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 
 - **Node.js** 18+
 - **Google Chrome** instalado
-- **Chave da API do Gemini** ([console.cloud.google.com](https://console.cloud.google.com))
+- **Chave da API do Gemini** ([Google AI Studio](https://aistudio.google.com/apikey))
+
+> ⚠️ **Importante**: O plano gratuito do Gemini tem limites muito baixos (ex: 20 requests/dia no Flash, limites ainda menores no Pro). O bot consome muitas chamadas por execução (cada iteração do agente = 1 request), então o tier gratuito **não é suficiente** para uso real. É necessário [ativar o billing](https://aistudio.google.com/apikey) na sua API key para ter limites adequados (2000 req/min no plano pago). O custo do `gemini-2.5-flash` é muito baixo (~$0.15/milhão de tokens de input).
 
 ### 2. Instalação
 
@@ -101,10 +103,11 @@ nano config/respostas.json   # Respostas pré-definidas para formulários
 ### 4. Prepare o Chrome
 
 ```bash
-# Abra o Chrome com porta de debug habilitada
-google-chrome --remote-debugging-port=9222
+# Abra o Chrome com porta de debug habilitada (requer --user-data-dir separado)
+google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.chrome-debug-profile"
 
 # Faça login manualmente nos sites de vagas (Gupy, LinkedIn, etc.)
+# Na primeira vez o Chrome abrirá "limpo" — as sessões ficam salvas nesse perfil separado
 ```
 
 ### 5. Execute
