@@ -6,6 +6,12 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 
 ---
 
+## ⚠️ Status do Projeto: Em Desenvolvimento
+
+> **Este projeto ainda não está funcionando corretamente.** A principal limitação atual são os **CAPTCHAs**: a maioria dos portais de vagas (Gupy, LinkedIn, etc.) utiliza sistemas anti-bot (Cloudflare, reCAPTCHA, hCaptcha) que bloqueiam a automação antes mesmo de chegar às vagas. O mecanismo de resolução via Telegram existe, mas não é suficiente para lidar com a frequência e variedade de CAPTCHAs encontrados na prática. O projeto está em desenvolvimento ativo e contribuições são bem-vindas para resolver essa e outras limitações.
+
+---
+
 ## ✨ Features
 
 | Feature | Descrição |
