@@ -16,10 +16,12 @@ export function enviarTelegram(mensagem: string): Promise<boolean> {
   if (!telegramConfig) return Promise.resolve(false);
 
   return new Promise((resolve) => {
+    // Texto plano (sem parse_mode): nomes de vaga/empresa/URL e mensagens de erro
+    // frequentemente contêm _ * [ ] que quebram o Markdown do Telegram e faziam a
+    // notificação falhar silenciosamente (HTTP 400). Texto puro é à prova disso.
     const payload = JSON.stringify({
       chat_id: telegramConfig!.chatId,
       text: mensagem,
-      parse_mode: 'Markdown',
     });
 
     const options = {
@@ -59,18 +61,18 @@ export function enviarTelegram(mensagem: string): Promise<boolean> {
 // Notificações pré-formatadas
 export async function notificarCandidatura(empresa: string, vaga: string, score: number, dryRun: boolean): Promise<void> {
   const modo = dryRun ? '🔵 DRY-RUN' : '🟢 APLICADO';
-  const msg = `${modo}\n*${vaga}* — ${empresa}\nScore: ${score}/10`;
+  const msg = `${modo}\n${vaga} — ${empresa}\nScore: ${score}/10`;
   await enviarTelegram(msg);
 }
 
 export async function notificarResumo(total: number, erros: number, dryRun: boolean): Promise<void> {
   const modo = dryRun ? '(DRY-RUN)' : '';
-  const msg = `📊 *Resumo da Execução* ${modo}\nCandidaturas: ${total}\nErros: ${erros}`;
+  const msg = `📊 Resumo da Execução ${modo}\nCandidaturas: ${total}\nErros: ${erros}`;
   await enviarTelegram(msg);
 }
 
 export async function notificarErro(mensagem: string): Promise<void> {
-  await enviarTelegram(`🔴 *ERRO*\n${mensagem}`);
+  await enviarTelegram(`🔴 ERRO\n${mensagem}`);
 }
 
 // ========== CAPTCHA HANDLING VIA TELEGRAM ==========
@@ -98,11 +100,6 @@ export function enviarFotoTelegram(foto: Buffer, caption: string): Promise<boole
     // Campo: caption
     partes.push(Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="caption"\r\n\r\n${caption}\r\n`,
-    ));
-
-    // Campo: parse_mode
-    partes.push(Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="parse_mode"\r\n\r\nMarkdown\r\n`,
     ));
 
     // Campo: photo (arquivo binário)
@@ -214,7 +211,7 @@ export async function solicitarResolucaoCaptcha(
 
   // 2. Envia foto do CAPTCHA
   const fotoBuffer = Buffer.from(screenshotBase64, 'base64');
-  const caption = `🔒 *CAPTCHA DETECTADO*\n\nURL: ${urlVaga}\n\nResolva o CAPTCHA na imagem e *responda com a solução* (texto ou código).`;
+  const caption = `🔒 CAPTCHA DETECTADO\n\nURL: ${urlVaga}\n\nResolva o CAPTCHA na imagem e responda com a solução (texto ou código).`;
 
   const enviou = await enviarFotoTelegram(fotoBuffer, caption);
   if (!enviou) {
@@ -247,7 +244,7 @@ export async function solicitarResolucaoCaptcha(
         if (solucao.startsWith('/')) continue;
 
         log('INFO', `CAPTCHA: Solução recebida via Telegram: "${solucao}"`);
-        await enviarTelegram(`✅ Solução recebida: *${solucao}*\nInserindo no formulário...`);
+        await enviarTelegram(`✅ Solução recebida: ${solucao}\nInserindo no formulário...`);
         return solucao;
       }
     }
@@ -258,6 +255,6 @@ export async function solicitarResolucaoCaptcha(
 
   // Timeout
   log('WARN', 'CAPTCHA: Timeout — nenhuma solução recebida em 5 minutos.');
-  await enviarTelegram('⏰ *Timeout!* Nenhuma solução recebida em 5 minutos. Pulando vaga...');
+  await enviarTelegram('⏰ Timeout! Nenhuma solução recebida em 5 minutos. Pulando vaga...');
   return null;
 }

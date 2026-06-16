@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -253,8 +253,18 @@ export async function gerarCurriculoTailored(
   // Converter HTML → PDF via Chrome headless
   try {
     const chromePath = detectarChrome();
-    execSync(
-      `"${chromePath}" --headless=new --disable-gpu --no-sandbox --print-to-pdf="${caminhoPDF}" --no-pdf-header-footer "file://${caminhoHTML}"`,
+    // execFileSync (array de args, sem shell): nenhum metacaractere em caminhos
+    // pode escapar para o shell. Antes era um execSync com string interpolada.
+    execFileSync(
+      chromePath,
+      [
+        '--headless=new',
+        '--disable-gpu',
+        '--no-sandbox',
+        `--print-to-pdf=${caminhoPDF}`,
+        '--no-pdf-header-footer',
+        `file://${caminhoHTML}`,
+      ],
       { timeout: 15000, stdio: 'pipe' },
     );
     log('TOOL', `PDF tailored gerado: ${nomePDF}`);
@@ -340,7 +350,7 @@ function detectarChrome(): string {
 
   for (const candidato of candidatos) {
     try {
-      execSync(`which ${candidato}`, { stdio: 'pipe' });
+      execFileSync('which', [candidato], { stdio: 'pipe' });
       return candidato;
     } catch {
       // Tentar próximo

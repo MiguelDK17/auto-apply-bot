@@ -1,26 +1,51 @@
 import http from 'http';
 import { listarCandidaturas, obterEstatisticas } from './database.js';
+import { log } from './logger.js';
+
+// Servidor único (singleton). No modo cron, executarFluxoPrincipal roda várias
+// vezes; sem este controle, cada execução tentaria reabrir a mesma porta
+// (EADDRINUSE) e derrubaria o processo.
+let server: http.Server | null = null;
+
+/** Escapa caracteres especiais de HTML para evitar XSS/quebra de layout. */
+export function escaparHtml(valor: unknown): string {
+  return String(valor ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Aceita a URL apenas se o esquema for http/https; caso contrário retorna '#'.
+ *  Bloqueia vetores como javascript: vindos de páginas de vagas não confiáveis. */
+export function sanitizarUrl(url: unknown): string {
+  const s = String(url ?? '');
+  return /^https?:\/\//i.test(s) ? escaparHtml(s) : '#';
+}
 
 function gerarHTML(): string {
   const stats = obterEstatisticas();
   const candidaturas = listarCandidaturas(100);
 
+  // IMPORTANTE: empresa/titulo/url vêm das páginas de vagas (não confiáveis) via
+  // LLM. Todo valor dinâmico é escapado para impedir XSS armazenado no dashboard.
   const linhasTabela = candidaturas.map(c => `
     <tr>
-      <td>${c.data_aplicacao}</td>
-      <td>${c.plataforma}</td>
-      <td>${c.empresa}</td>
-      <td>${c.titulo_vaga}</td>
+      <td>${escaparHtml(c.data_aplicacao)}</td>
+      <td>${escaparHtml(c.plataforma)}</td>
+      <td>${escaparHtml(c.empresa)}</td>
+      <td>${escaparHtml(c.titulo_vaga)}</td>
       <td><span class="score ${c.score && c.score >= 7 ? 'high' : c.score && c.score >= 5 ? 'mid' : 'low'}">${c.score || '-'}</span></td>
-      <td><span class="status ${c.status}">${c.status}</span></td>
-      <td><a href="${c.url}" target="_blank">Ver</a></td>
+      <td><span class="status ${escaparHtml(c.status)}">${escaparHtml(c.status)}</span></td>
+      <td><a href="${sanitizarUrl(c.url)}" target="_blank" rel="noopener noreferrer">Ver</a></td>
     </tr>
   `).join('');
 
   const plataformasRows = stats.porPlataforma.map(p => `
     <div class="stat-card">
       <div class="stat-value">${p.total}</div>
-      <div class="stat-label">${p.plataforma}</div>
+      <div class="stat-label">${escaparHtml(p.plataforma)}</div>
       <div class="stat-sub">Score medio: ${p.score_medio ? p.score_medio.toFixed(1) : '-'}</div>
     </div>
   `).join('');
@@ -97,12 +122,35 @@ function gerarHTML(): string {
 }
 
 export function iniciarDashboard(port: number): void {
-  const server = http.createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  // Idempotente: no modo cron não reabrimos o servidor a cada execução.
+  if (server) return;
+
+  const srv = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Content-Type-Options': 'nosniff',
+    });
     res.end(gerarHTML());
   });
 
-  server.listen(port, () => {
-    console.log(`[DASHBOARD] Rodando em http://localhost:${port}`);
+  // Não derrubar o processo se a porta estiver ocupada.
+  srv.on('error', (err) => {
+    log('ERRO', `Dashboard: falha na porta ${port} — ${err.message}`);
+    server = null;
   });
+
+  // Bind só em localhost: não expõe o histórico de candidaturas na rede.
+  srv.listen(port, '127.0.0.1', () => {
+    log('INFO', `Dashboard rodando em http://localhost:${port}`);
+  });
+
+  server = srv;
+}
+
+/** Encerra o servidor do dashboard (usado na execução única para o processo poder sair). */
+export function pararDashboard(): void {
+  if (server) {
+    server.close();
+    server = null;
+  }
 }

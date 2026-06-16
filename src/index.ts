@@ -3,9 +3,9 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { conectarPlaywrightMCP, desconectarMCP } from './mcp-client.js';
-import { inicializarBanco, fecharBanco, registrarExecucao, contarCandidaturasHoje } from './database.js';
+import { inicializarBanco, fecharBanco, registrarExecucao, contarCandidaturasHoje, listarCandidaturas, obterEstatisticas } from './database.js';
 import { executarAgente } from './agente.js';
-import { iniciarDashboard } from './dashboard.js';
+import { iniciarDashboard, pararDashboard } from './dashboard.js';
 import { inicializarLogger, log } from './logger.js';
 import { configurarTelegram, notificarResumo, notificarErro } from './notificacoes.js';
 import { configurarEmail, enviarRelatorioEmail, gerarHTMLRelatorio } from './email.js';
@@ -147,15 +147,21 @@ async function executarFluxoPrincipal(config: AgenteConfig): Promise<void> {
   // Notificacoes
   await notificarResumo(novasCandidaturas, erros.length, config.dryRun);
 
-  // Relatorio por email
+  // Relatorio por email — busca dados reais do banco (antes ia sempre vazio)
+  const candidaturasRecentes = novasCandidaturas > 0 ? listarCandidaturas(novasCandidaturas) : [];
+  const empresasRelatorio = candidaturasRecentes.map(
+    c => `${c.empresa} — ${c.titulo_vaga} (score ${c.score ?? '-'})`,
+  );
+  const scoreMedioHoje = obterEstatisticas().hoje.score_medio ?? 0;
+
   await enviarRelatorioEmail(
     `Job Bot — ${novasCandidaturas} candidatura(s) ${config.dryRun ? '(DRY-RUN)' : ''}`,
     gerarHTMLRelatorio({
       total: novasCandidaturas,
-      empresas: [], // O agente registra no banco, aqui só o resumo
+      empresas: empresasRelatorio,
       erros,
       dryRun: config.dryRun,
-      scoresMedio: 0,
+      scoresMedio: scoreMedioHoje,
     }),
   );
 
@@ -214,12 +220,16 @@ async function main() {
     process.on('SIGINT', () => {
       log('INFO', 'Recebido SIGINT. Parando cron...');
       pararCron();
+      pararDashboard();
       fecharBanco();
       process.exit(0);
     });
   } else {
     // Execução única
     await executarFluxoPrincipal(config);
+    // Fecha o dashboard para o processo poder encerrar (no modo cron ele
+    // permanece aberto entre execucoes para visualizacao).
+    pararDashboard();
   }
 }
 
