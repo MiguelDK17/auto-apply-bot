@@ -10,13 +10,14 @@ const DB_PATH = path.resolve(__dirname, '..', 'data', 'candidaturas.db');
 
 let db: Database.Database;
 
-export function inicializarBanco(): Database.Database {
+export function inicializarBanco(dbPath: string = DB_PATH): Database.Database {
   // better-sqlite3 NÃO cria o diretório pai do arquivo .db. Como data/ está no
   // .gitignore, num clone limpo o diretório não existe e o bot crashava com
   // "unable to open database file". Garantimos a existência aqui.
-  mkdirSync(path.dirname(DB_PATH), { recursive: true });
+  // O parâmetro dbPath (default = DB_PATH) permite testes com um caminho próprio.
+  mkdirSync(path.dirname(dbPath), { recursive: true });
 
-  db = new Database(DB_PATH);
+  db = new Database(dbPath);
 
   db.pragma('journal_mode = WAL');
 
@@ -291,7 +292,7 @@ export function buscarRespostaCache(pergunta: string, tipoCampo: string): CacheR
   if (exata) {
     // Atualizar contador e data de uso
     db.prepare(
-      'UPDATE cache_respostas SET vezes_usada = vezes_usada + 1, data_ultimo_uso = datetime("now", "localtime") WHERE id = ?',
+      `UPDATE cache_respostas SET vezes_usada = vezes_usada + 1, data_ultimo_uso = datetime('now', 'localtime') WHERE id = ?`,
     ).run(exata.id);
     return exata;
   }
@@ -305,7 +306,7 @@ export function buscarRespostaCache(pergunta: string, tipoCampo: string): CacheR
     for (const item of todas) {
       if (sanitizada.includes(item.pergunta_sanitizada) || item.pergunta_sanitizada.includes(sanitizada)) {
         db.prepare(
-          'UPDATE cache_respostas SET vezes_usada = vezes_usada + 1, data_ultimo_uso = datetime("now", "localtime") WHERE id = ?',
+          `UPDATE cache_respostas SET vezes_usada = vezes_usada + 1, data_ultimo_uso = datetime('now', 'localtime') WHERE id = ?`,
         ).run(item.id);
         return item;
       }
