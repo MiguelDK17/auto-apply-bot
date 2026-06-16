@@ -11,6 +11,8 @@ import {
   salvarRespostaCache,
   buscarRespostaCache,
   sanitizarPergunta,
+  atualizarResultado,
+  listarCandidaturas,
 } from '../src/database';
 
 // Diretório de teste propositalmente inexistente, para validar a criação automática.
@@ -79,5 +81,42 @@ describe('database — cache de respostas', () => {
 
     // Validação
     expect(resultado).toBe('qual sua pretensão?');
+  });
+});
+
+describe('database — resultado (loop de feedback)', () => {
+  it('atualiza o resultado de uma candidatura existente', () => {
+    // Cenário: registra uma candidatura e recupera o id pela URL
+    const url = 'https://exemplo.com/vaga/resultado';
+    registrarCandidatura({
+      plataforma: 'LinkedIn', titulo_vaga: 'Dev', empresa: 'Beta',
+      url, mensagem_enviada: 0, status: 'aplicado', score: 8,
+    });
+    const id = listarCandidaturas(50).find((c) => c.url === url)!.id as number;
+
+    // Ação
+    const ok = atualizarResultado(id, 'entrevista');
+
+    // Validação
+    expect(ok).toBe(true);
+    expect(listarCandidaturas(50).find((c) => c.id === id)?.resultado).toBe('entrevista');
+  });
+
+  it('rejeita resultado fora do vocabulario fechado', () => {
+    // Cenário
+    const url = 'https://exemplo.com/vaga/invalido';
+    registrarCandidatura({
+      plataforma: 'LinkedIn', titulo_vaga: 'Dev', empresa: 'Gama',
+      url, mensagem_enviada: 0, status: 'aplicado', score: 8,
+    });
+    const id = listarCandidaturas(50).find((c) => c.url === url)!.id as number;
+
+    // Ação + Validação
+    expect(atualizarResultado(id, 'foo_invalido')).toBe(false);
+  });
+
+  it('retorna false para id inexistente', () => {
+    // Cenário + Ação + Validação
+    expect(atualizarResultado(999999, 'entrevista')).toBe(false);
   });
 });
