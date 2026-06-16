@@ -61,8 +61,10 @@ export function desanonimizar(texto: string, mapa: MapaAnonimizacao): string {
 
   // Inverter mapa: placeholder → valor real
   for (const [valorReal, placeholder] of Object.entries(mapa)) {
-    // Replace global (o LLM pode ter usado o placeholder múltiplas vezes)
-    resultado = resultado.replaceAll(placeholder, valorReal);
+    // Replace global (o LLM pode ter usado o placeholder múltiplas vezes).
+    // Função de replacement: evita interpretação de padrões especiais ($&, $1)
+    // caso o valor real contenha cifrão.
+    resultado = resultado.replaceAll(placeholder, () => valorReal);
   }
 
   return resultado;

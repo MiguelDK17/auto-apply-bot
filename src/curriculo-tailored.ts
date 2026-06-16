@@ -67,9 +67,12 @@ export function gerarHTMLBase(perfil: Perfil): string {
 <p>${perfil.informacoes_extras?.idiomas ?? 'Portugues (nativo)'}</p>
 
 </body>
-</html>`.replace('{{EXPERIENCIAS}}', experienciasHTML)
-    .replace('{{SKILLS}}', skillsCategorizadas)
-    .replace('{{RESUMO}}', perfil.resumo_profissional);
+</html>`
+    // Funções de replacement: evitam que padrões especiais ($&, $1, ...) no
+    // conteúdo sejam interpretados pelo String.replace e corrompam o resultado.
+    .replace('{{EXPERIENCIAS}}', () => experienciasHTML)
+    .replace('{{SKILLS}}', () => skillsCategorizadas)
+    .replace('{{RESUMO}}', () => perfil.resumo_profissional);
 }
 
 function categorizarSkills(perfil: Perfil): string {

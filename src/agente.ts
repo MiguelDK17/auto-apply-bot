@@ -272,6 +272,7 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
   let iteracao = 0;
   let respostaFinal = '';
   let errosConsecutivos = 0;
+  let saiuComErroFatal = false;
 
   while (iteracao < MAX_ITERACOES) {
     iteracao++;
@@ -409,6 +410,7 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
       // Erro fatal ou tentativas esgotadas
       salvarRecovery(iteracao, sitesAtivos.map(s => s.nome));
       respostaFinal = `Erro durante execucao: ${mensagemErro}`;
+      saiuComErroFatal = true;
       break;
     }
   }
@@ -417,7 +419,11 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
     respostaFinal = `Agente atingiu o limite maximo de ${MAX_ITERACOES} iteracoes.`;
   }
 
-  limparRecovery();
+  // Só limpa o recovery se NÃO saímos por erro fatal — assim o aviso de
+  // "execução anterior interrompida" sobrevive para a próxima execução.
+  if (!saiuComErroFatal) {
+    limparRecovery();
+  }
   log('AGENTE', `Finalizado apos ${iteracao} iteracoes.`);
   return respostaFinal;
 }

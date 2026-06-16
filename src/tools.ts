@@ -602,8 +602,9 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
       }
 
       case 'escolher_curriculo': {
-        const descricao = (args.descricao_vaga as string).toLowerCase();
-        const config = carregarCurriculos();
+        const descricao = ((args.descricao_vaga as string) || '').toLowerCase();
+        // Nome próprio (não 'config') para não sombrear o AgenteConfig do executor.
+        const curriculosConfig = carregarCurriculos();
 
         // Mapeamento de palavras-chave para cada curriculo
         const mapeamento: Record<string, string[]> = {
@@ -627,21 +628,21 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
 
         // Fallback: se nenhum score ou score muito baixo, usa o curriculo original
         if (maiorScore === 0) {
-          const fallbackPath = path.resolve(__dirname, '..', config.fallback.arquivo);
+          const fallbackPath = path.resolve(__dirname, '..', curriculosConfig.fallback.arquivo);
           return JSON.stringify({
             curriculo_escolhido: 'original',
-            foco: config.fallback.foco,
+            foco: curriculosConfig.fallback.foco,
             caminho: fallbackPath,
             motivo: 'Nenhum curriculo especifico se encaixou. Usando curriculo original como fallback.',
           });
         }
 
-        const curriculo = config.curriculos.find(c => c.id === melhorMatch);
+        const curriculo = curriculosConfig.curriculos.find(c => c.id === melhorMatch);
         if (!curriculo) {
-          const fallbackPath = path.resolve(__dirname, '..', config.fallback.arquivo);
+          const fallbackPath = path.resolve(__dirname, '..', curriculosConfig.fallback.arquivo);
           return JSON.stringify({
             curriculo_escolhido: 'original',
-            foco: config.fallback.foco,
+            foco: curriculosConfig.fallback.foco,
             caminho: fallbackPath,
             motivo: 'Curriculo especifico nao encontrado. Usando curriculo original como fallback.',
           });

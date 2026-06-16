@@ -1,12 +1,11 @@
-// Tracking de custo de tokens das chamadas ao Gemini.
+// Tracking de custo de tokens das chamadas aos LLMs.
 // Adaptado do beatwad/AIHawk: registra input/output tokens de cada chamada,
 // calcula custo em USD e exibe resumo ao final da execução.
 //
-// Pricing: Gemini 2.5 Pro (standard tier ≤ 200K context)
-// - Input:  $1.25 / 1M tokens
-// - Output: $10.00 / 1M tokens
-// - Cached: $0.125 / 1M tokens
-// Fonte: https://ai.google.dev/gemini-api/docs/pricing
+// A tabela de preços (PRICING, abaixo) cobre Gemini 2.5 Pro/Flash e 2.0 Flash;
+// Ollama tem custo zero (roda localmente). Modelos não listados caem no
+// fallback do Gemini 2.5 Pro. Fonte dos preços Gemini:
+// https://ai.google.dev/gemini-api/docs/pricing
 
 import { log } from './logger.js';
 
