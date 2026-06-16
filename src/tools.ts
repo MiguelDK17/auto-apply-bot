@@ -27,15 +27,10 @@ import {
   ehFalhaPermanente,
   ehFalhaRetriavel,
   calcularBackoff,
-  FALHAS_PERMANENTES,
-  FALHAS_RETRIAVEIS,
   MAX_TENTATIVAS,
 } from './erros.js';
-import type { Perfil, RespostasPredefinidas } from './types.js';
-
-// Configuração do Gemini passada pelo index.ts na criação do executor
-let _geminiApiKey = '';
-let _geminiModel = '';
+import { pontuarVaga } from './scoring.js';
+import type { Perfil, RespostasPredefinidas, AgenteConfig } from './types.js';
 
 // Mapa de tentativas por URL para controle de retry (adaptado do ApplyPilot: attempts tracking)
 const tentativasPorUrl = new Map<string, number>();
@@ -112,6 +107,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
         mensagem_enviada: {
           type: Type.BOOLEAN,
           description: 'Se uma mensagem personalizada foi enviada ao recrutador',
+        },
+        score: {
+          type: Type.NUMBER,
+          description: 'Score da vaga (1-10) calculado por pontuar_vaga. Inclua sempre — alimenta o dashboard e as estatisticas.',
         },
       },
       required: ['plataforma', 'titulo_vaga', 'empresa', 'url'],
@@ -529,9 +528,11 @@ export const customToolDeclarations: FunctionDeclaration[] = [
 
 // ========== EXECUTOR DAS TOOLS ==========
 
-export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, geminiModel?: string) {
-  if (geminiApiKey) _geminiApiKey = geminiApiKey;
-  if (geminiModel) _geminiModel = geminiModel;
+export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
+  // Config injetada (não mais globais mutáveis): permite dry-run autoritativo e
+  // scoring configurável, e torna o executor previsível para testes.
+  const geminiApiKey = config.geminiApiKey;
+  const geminiModel = config.geminiModel;
   return async function executarTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
       case 'obter_perfil_candidato': {
@@ -550,7 +551,9 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
         const score = (args.score as number) || 0;
         const empresa = args.empresa as string;
         const tituloVaga = args.titulo_vaga as string;
-        const isDryRun = !!args.dry_run;
+        // Dry-run é autoritativo via config — não depende mais de o LLM lembrar
+        // de passar um argumento (que sequer era declarado na tool).
+        const isDryRun = config.dryRun;
         const sucesso = registrarCandidatura({
           plataforma: args.plataforma as string,
           titulo_vaga: tituloVaga,
@@ -581,42 +584,20 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
       }
 
       case 'pontuar_vaga': {
-        const tecsPedidas = (args.tecnologias_pedidas as string).toLowerCase();
-        const senioridade = ((args.senioridade as string) || '').toLowerCase();
-        const localizacao = ((args.localizacao as string) || '').toLowerCase();
-        const modelo = ((args.modelo_trabalho as string) || '').toLowerCase();
-
-        let score = 5; // Base
-
-        // Match de tecnologias (+1 por cada tech que o candidato tem)
-        const minhasTechs = perfil.stack_principal.map(s => s.toLowerCase());
-        for (const tech of minhasTechs) {
-          if (tecsPedidas.includes(tech)) score += 1;
-        }
-
-        // Penalidades
-        if (senioridade.includes('senior') || senioridade.includes('sênior')) score -= 2;
-        if (senioridade.includes('pleno')) score += 1;
-        if (senioridade.includes('junior') || senioridade.includes('júnior')) score += 1;
-
-        // Localizacao
-        if (localizacao.includes('uberlandia') || localizacao.includes('uberlândia')) {
-          score += 1;
-        } else if (modelo.includes('presencial') || modelo.includes('hibrido')) {
-          score -= 3; // Fora de Uberlandia e nao remoto = penalidade forte
-        }
-        if (modelo.includes('remoto')) score += 1;
-
-        // Clamp entre 1-10
-        score = Math.max(1, Math.min(10, score));
-
-        return JSON.stringify({
-          score,
-          veredicto: score >= 6 ? 'APLICAR' : 'PULAR',
-          motivo: score >= 6
-            ? `Score ${score}/10: boa compatibilidade com o perfil.`
-            : `Score ${score}/10: baixa compatibilidade. Pule para a proxima vaga.`,
-        });
+        // Lógica pura extraída para src/scoring.ts: usa a cidade do perfil e o
+        // SCORE_MINIMO configurável (antes "uberlandia" e 6 estavam hardcoded).
+        const resultado = pontuarVaga(
+          {
+            tecnologias_pedidas: args.tecnologias_pedidas as string | undefined,
+            senioridade: args.senioridade as string | undefined,
+            localizacao: args.localizacao as string | undefined,
+            modelo_trabalho: args.modelo_trabalho as string | undefined,
+          },
+          perfil.stack_principal,
+          perfil.cidade,
+          config.scoreMinimo,
+        );
+        return JSON.stringify(resultado);
       }
 
       case 'escolher_curriculo': {
@@ -902,14 +883,14 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
           });
         }
 
-        if (!_geminiApiKey || !_geminiModel) {
+        if (!geminiApiKey || !geminiModel) {
           return 'ERRO: Configuracao do Gemini nao disponivel para gerar mensagem.';
         }
 
         try {
           const resultado = await gerarMensagemRecrutador(
-            _geminiApiKey,
-            _geminiModel,
+            geminiApiKey,
+            geminiModel,
             perfil,
             nomeRecrutador,
             cargoRecrutador,
@@ -999,14 +980,14 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
         const empresa = args.empresa as string;
         const titulo = args.titulo_vaga as string;
 
-        if (!_geminiApiKey || !_geminiModel) {
+        if (!geminiApiKey || !geminiModel) {
           return 'ERRO: Configuracao do Gemini nao disponivel para gerar cover letter.';
         }
 
         try {
           const resultado = await gerarCoverLetter(
-            _geminiApiKey,
-            _geminiModel,
+            geminiApiKey,
+            geminiModel,
             perfil,
             descricao,
             empresa,
@@ -1033,15 +1014,15 @@ export function criarExecutorDeTools(perfil: Perfil, geminiApiKey?: string, gemi
         const titulo = (args.titulo_vaga as string) || '';
         const empresa = (args.empresa as string) || '';
 
-        if (!_geminiApiKey || !_geminiModel) {
+        if (!geminiApiKey || !geminiModel) {
           log('ERRO', 'Curriculo tailored: API key ou modelo nao configurados');
           return 'ERRO: Configuracao do Gemini nao disponivel. Use escolher_curriculo como fallback.';
         }
 
         try {
           const resultado = await gerarCurriculoTailored(
-            _geminiApiKey,
-            _geminiModel,
+            geminiApiKey,
+            geminiModel,
             perfil,
             descricao,
           );

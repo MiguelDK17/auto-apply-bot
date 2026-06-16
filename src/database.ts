@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
+import { mkdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { log } from './logger.js';
 import type { Candidatura } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -9,6 +11,11 @@ const DB_PATH = path.resolve(__dirname, '..', 'data', 'candidaturas.db');
 let db: Database.Database;
 
 export function inicializarBanco(): Database.Database {
+  // better-sqlite3 NÃO cria o diretório pai do arquivo .db. Como data/ está no
+  // .gitignore, num clone limpo o diretório não existe e o bot crashava com
+  // "unable to open database file". Garantimos a existência aqui.
+  mkdirSync(path.dirname(DB_PATH), { recursive: true });
+
   db = new Database(DB_PATH);
 
   db.pragma('journal_mode = WAL');
@@ -101,7 +108,7 @@ export function verificarJaAplicou(url: string): boolean {
 
 export function registrarCandidatura(candidatura: Omit<Candidatura, 'id' | 'data_aplicacao'>): boolean {
   try {
-    db.prepare(`
+    const result = db.prepare(`
       INSERT OR IGNORE INTO candidaturas (plataforma, titulo_vaga, empresa, url, mensagem_enviada, status, score, screenshot_path)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -114,8 +121,10 @@ export function registrarCandidatura(candidatura: Omit<Candidatura, 'id' | 'data
       candidatura.score ?? 0,
       candidatura.screenshot_path ?? null
     );
-    return true;
-  } catch {
+    // changes === 0 significa duplicata ignorada (URL já existe), não erro real.
+    return result.changes > 0;
+  } catch (error) {
+    log('ERRO', `registrarCandidatura falhou: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -140,8 +149,10 @@ export function registrarVagaVista(dados: {
       dados.score ?? 0,
       dados.motivo_pulo ?? null
     );
+    // Idempotente: marcar uma vaga já vista de novo é sucesso (não erro).
     return true;
-  } catch {
+  } catch (error) {
+    log('ERRO', `registrarVagaVista falhou: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -216,7 +227,7 @@ export function registrarMensagemRecrutador(dados: {
   score_vaga?: number;
 }): boolean {
   try {
-    db.prepare(`
+    const result = db.prepare(`
       INSERT OR IGNORE INTO mensagens_recrutadores
         (nome_recrutador, cargo_recrutador, empresa, url_perfil, url_vaga, titulo_vaga, mensagem, plataforma, score_vaga)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -231,8 +242,10 @@ export function registrarMensagemRecrutador(dados: {
       dados.plataforma ?? 'linkedin',
       dados.score_vaga ?? 0,
     );
-    return true;
-  } catch {
+    // changes === 0 = recrutador já contatado (url_perfil UNIQUE), não erro.
+    return result.changes > 0;
+  } catch (error) {
+    log('ERRO', `registrarMensagemRecrutador falhou: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -331,7 +344,8 @@ export function salvarRespostaCache(pergunta: string, tipoCampo: string, respost
       'INSERT INTO cache_respostas (tipo_campo, pergunta_sanitizada, resposta) VALUES (?, ?, ?)',
     ).run(tipoCampo, sanitizada, resposta);
     return true;
-  } catch {
+  } catch (error) {
+    log('ERRO', `salvarRespostaCache falhou: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }

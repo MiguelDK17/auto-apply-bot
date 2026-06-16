@@ -233,7 +233,7 @@ export async function executarAgente(
   config: AgenteConfig,
 ): Promise<string> {
   const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
-  const executarTool = criarExecutorDeTools(perfil, config.geminiApiKey, config.geminiModel);
+  const executarTool = criarExecutorDeTools(perfil, config);
   const systemPrompt = buildSystemPrompt(perfil, sites, config);
 
   const sitesAtivos = sites.sites.filter(s => s.ativo);
