@@ -424,7 +424,7 @@ export const customToolDeclarations: FunctionDeclaration[] = [
   {
     name: 'reportar_falha',
     description:
-      'Reporta uma falha encontrada durante o processo de candidatura. Classifica automaticamente como PERMANENTE (nunca retentar) ou RETRIAVEL (tentar novamente). Use quando encontrar erros como: vaga expirada, CAPTCHA, timeout, erro de rede, formulario incompativel, etc. Codigos permanentes: vaga_expirada, captcha, sessao_expirada, localizacao_inelegivel, ja_aplicou, conta_necessaria, nao_e_vaga, sso_obrigatorio, site_bloqueado, cloudflare, formulario_incompativel, vaga_interna, idioma_incompativel. Codigos retriaveis: timeout, erro_rede, pagina_nao_carregou, erro_servidor, elemento_nao_encontrado, erro_upload, erro_mcp.',
+      'Reporta uma falha encontrada durante o processo de candidatura. Classifica automaticamente como PERMANENTE (nunca retentar) ou RETRIAVEL (tentar novamente). Use quando encontrar erros como: vaga expirada, CAPTCHA, timeout, erro de rede, formulario incompativel, etc. Codigos permanentes: vaga_expirada, captcha, sessao_expirada, localizacao_inelegivel, ja_aplicou, conta_necessaria, nao_e_vaga, sso_obrigatorio, site_bloqueado, cloudflare, portal_bloqueado (bloqueio na pagina de busca — abandona o portal inteiro), formulario_incompativel, vaga_interna, idioma_incompativel. Codigos retriaveis: timeout, erro_rede, pagina_nao_carregou, erro_servidor, elemento_nao_encontrado, erro_upload, erro_mcp.',
     parameters: {
       type: Type.OBJECT,
       properties: {

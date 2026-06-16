@@ -170,9 +170,9 @@ APOS se candidatar a uma vaga com score ALTO (>= 8) no LinkedIn, tente contatar 
 4. Navegue ate o perfil do recrutador no LinkedIn
 5. Clique em "Conectar" → "Adicionar nota"
 6. Cole o texto com browser_type
-7. Clique em "Enviar"
-8. Use registrar_mensagem_recrutador para salvar no banco
-${dryRun ? '9. ** DRY-RUN: NAO envie o convite. Faca tudo menos clicar no botao final. **' : ''}
+7. ANTES de clicar em "Enviar", chame confirmar_envio (acao: "mensagem ao recrutador"). Se bloquear (dry-run ou teto), NAO envie o convite e siga.
+8. Clique em "Enviar"
+9. Use registrar_mensagem_recrutador para salvar no banco
 
 ### Prioridade:
 - A candidatura TEM PRIORIDADE sobre a mensagem ao recrutador
