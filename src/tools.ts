@@ -577,8 +577,9 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
   // execução — recriado a cada chamada. No modo cron isso evita carregar
   // contadores de retry de execuções anteriores.
   const tentativasPorUrl = new Map<string, number>();
-  // Teto de envios reais NESTA execução (protege a conta real de rajadas).
-  // Determinístico no código — não confiado ao LLM.
+  // Teto de envios confirmados NESTA execução (anti-rajada). Aplicado quando o
+  // agente passa pelo checkpoint confirmar_envio; a trava 100% determinística
+  // de gravação é o gate em registrar_candidatura.
   let enviosConfirmados = 0;
   // Portais que bloquearam na entrada NESTA execução — abandonados por completo
   // (não adianta tentar outras URLs/páginas; só queima iterações e risco de ban).
@@ -650,9 +651,12 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const urlVaga = (args.url_vaga as string) || '';
         const acao = (args.acao as string) || 'envio';
 
-        // TRAVA TECNICA DE DRY-RUN: garantida por codigo, nao por instrucao no
-        // prompt. Em dry-run, nenhum envio real e liberado — o LLM nao consegue
-        // furar isso "esquecendo" que esta em dry-run.
+        // CHECKPOINT DE ENVIO (cooperativo): o agente é instruído a chamar esta
+        // tool antes do clique de envio. Em dry-run respondemos "bloqueado" e
+        // aplicamos o teto, mas o clique em si é uma browser tool do MCP que o
+        // LLM controla — então isto reduz risco e conta os envios, NÃO é uma
+        // barreira física. A garantia 100% determinística de que nada vira
+        // candidatura "aplicada" está no gate de registrar_candidatura.
         if (config.dryRun) {
           log('AGENTE', `DRY-RUN: envio bloqueado pelo sistema (${acao}) — ${urlVaga}`);
           return JSON.stringify({

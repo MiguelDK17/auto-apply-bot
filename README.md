@@ -144,7 +144,7 @@ npm start
 | `DELAY_MAX` | Delay máximo entre ações (ms) | `5000` |
 | `SCORE_MINIMO` | Score mínimo para aplicar (1-10) | `6` |
 | `CUSTO_MAX_USD` | Teto de custo por execução em USD (0 = desativado) | `0` |
-| `DRY_RUN` | Modo teste — trava técnica que bloqueia o envio | `true` |
+| `DRY_RUN` | Modo teste — checkpoint bloqueia envio e registro grava como `dry-run` | `true` |
 | `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
 | `TELEGRAM_BOT_TOKEN` | Token do bot Telegram | *opcional* |
 | `TELEGRAM_CHAT_ID` | Chat ID do Telegram | *opcional* |
@@ -213,11 +213,10 @@ Score final entre 1-10. Só aplica se `score >= SCORE_MINIMO`.
 
 ## 🎛️ Controle e Segurança (copiloto, não autopiloto)
 
-A filosofia: o **código** garante as decisões críticas (não a "boa vontade" do LLM), e os pontos de risco são determinísticos:
+A filosofia: o **código** garante o que a arquitetura permite garantir (a gravação), e os demais pontos de risco passam por checkpoints explícitos — em vez de deixar tudo na "boa vontade" de um prompt de 200 linhas.
 
-- **Trava técnica de dry-run** — em `DRY_RUN=true`, o envio é bloqueado **no código** (tool `confirmar_envio`), não por uma instrução no prompt que o modelo poderia ignorar.
-- **Gate de score** — `registrar_candidatura` recusa qualquer vaga abaixo do `SCORE_MINIMO`.
-- **Teto por execução** — `MAX_POR_EXECUCAO` limita envios reais por rodada (anti-rajada, protege sua conta).
+- **Gate de registro (garantia real, determinística)** — `registrar_candidatura` recusa **no código** qualquer vaga abaixo do `SCORE_MINIMO` ou em blacklist, e em `DRY_RUN=true` grava sempre como `dry-run` (nunca `aplicado`), aconteça o que acontecer com o LLM. Essa é a salvaguarda final.
+- **Checkpoint de envio (`confirmar_envio`)** — o agente passa por ele antes de cada clique de envio; em dry-run responde "bloqueado" e aplica o `MAX_POR_EXECUCAO`. É **cooperativo**: o clique em si é uma ação de browser que o agente controla, então o checkpoint reduz risco e conta envios, mas não é uma barreira física. (Reforçá-lo com mais código não ajudaria — a arquitetura LLM+browser não permite uma trava física do clique; por isso o gate de registro é o que de fato protege.)
 - **Teto de custo** — `CUSTO_MAX_USD` interrompe o loop se o gasto passar do limite.
 - **Abandono de portal** — se um portal bloqueia na entrada (Cloudflare), o bot abandona aquele portal e segue para o próximo, em vez de insistir.
 
