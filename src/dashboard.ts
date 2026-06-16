@@ -38,6 +38,7 @@ function gerarHTML(): string {
       <td>${escaparHtml(c.titulo_vaga)}</td>
       <td><span class="score ${c.score && c.score >= 7 ? 'high' : c.score && c.score >= 5 ? 'mid' : 'low'}">${c.score || '-'}</span></td>
       <td><span class="status ${escaparHtml(c.status)}">${escaparHtml(c.status)}</span></td>
+      <td>${escaparHtml(c.resultado ?? 'aguardando')}</td>
       <td><a href="${sanitizarUrl(c.url)}" target="_blank" rel="noopener noreferrer">Ver</a></td>
     </tr>
   `).join('');
@@ -49,6 +50,31 @@ function gerarHTML(): string {
       <div class="stat-sub">Score medio: ${p.score_medio ? p.score_medio.toFixed(1) : '-'}</div>
     </div>
   `).join('');
+
+  // Funil de resultados (qualidade > quantidade). Denominador honesto = só as
+  // candidaturas com desfecho conhecido; sem dados, mostra empty-state em vez
+  // de exibir "0%" enganoso.
+  const cont = (r: string) => stats.porResultado.find(x => x.resultado === r)?.total ?? 0;
+  const comDesfecho = stats.porResultado
+    .filter(x => x.resultado !== 'aguardando')
+    .reduce((acc, x) => acc + x.total, 0);
+  const entrevistas = cont('entrevista') + cont('oferta');
+  const taxaResposta = comDesfecho > 0 ? Math.round(((comDesfecho - cont('sem_resposta')) / comDesfecho) * 100) : null;
+
+  const funilHtml = comDesfecho > 0 ? `
+    <div class="stat-card">
+      <div class="stat-value">${taxaResposta}%</div>
+      <div class="stat-label">Taxa de resposta</div>
+      <div class="stat-sub">${comDesfecho} com desfecho conhecido</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value">${entrevistas}</div>
+      <div class="stat-label">Entrevistas + ofertas</div>
+    </div>` : `
+    <div class="stat-card" style="min-width: 280px;">
+      <div class="stat-label">Funil de resultados</div>
+      <div class="stat-sub">Marque desfechos com "npm run resultado &lt;id&gt; &lt;resultado&gt;" para ativar as metricas de retorno.</div>
+    </div>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -96,6 +122,7 @@ function gerarHTML(): string {
       <div class="stat-label">Total</div>
     </div>
     ${plataformasRows}
+    ${funilHtml}
   </div>
 
   ${candidaturas.length > 0 ? `
@@ -108,6 +135,7 @@ function gerarHTML(): string {
         <th>Vaga</th>
         <th>Score</th>
         <th>Status</th>
+        <th>Resultado</th>
         <th>Link</th>
       </tr>
     </thead>
