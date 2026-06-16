@@ -39,6 +39,7 @@ export function inicializarBanco(dbPath: string = DB_PATH): Database.Database {
   const migracoes = [
     'ALTER TABLE candidaturas ADD COLUMN score INTEGER DEFAULT 0',
     'ALTER TABLE candidaturas ADD COLUMN screenshot_path TEXT',
+    "ALTER TABLE candidaturas ADD COLUMN resultado TEXT DEFAULT 'aguardando'",
   ];
   for (const sql of migracoes) {
     try { db.exec(sql); } catch { /* Coluna ja existe */ }
@@ -167,6 +168,29 @@ export function atualizarScreenshot(url: string, screenshotPath: string): void {
   db.prepare('UPDATE candidaturas SET screenshot_path = ? WHERE url = ?').run(screenshotPath, url);
 }
 
+// Vocabulário fechado de desfecho de uma candidatura — fecha o loop de feedback
+// (antes a candidatura morria em 'aplicado' e nunca se sabia o resultado).
+export const RESULTADOS_VALIDOS = [
+  'aguardando', 'respondido', 'entrevista', 'oferta', 'rejeitado', 'sem_resposta',
+] as const;
+export type ResultadoCandidatura = (typeof RESULTADOS_VALIDOS)[number];
+
+/**
+ * Marca o desfecho de uma candidatura pelo id.
+ * Retorna false se o resultado for inválido (vocabulário fechado) ou se o id
+ * não existir (nenhuma linha afetada).
+ */
+export function atualizarResultado(id: number, resultado: string): boolean {
+  if (!RESULTADOS_VALIDOS.includes(resultado as ResultadoCandidatura)) return false;
+  try {
+    const r = db.prepare('UPDATE candidaturas SET resultado = ? WHERE id = ?').run(resultado, id);
+    return r.changes > 0;
+  } catch (error) {
+    log('ERRO', `atualizarResultado falhou: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  }
+}
+
 export function obterEstatisticas() {
   const hoje = db.prepare(`
     SELECT COUNT(*) as total, AVG(score) as score_medio
@@ -185,7 +209,13 @@ export function obterEstatisticas() {
     FROM candidaturas GROUP BY status
   `).all() as Array<{ status: string; total: number }>;
 
-  return { hoje, total: total.total, porPlataforma, porStatus };
+  // Funil de resultados (só candidaturas reais, não dry-run) para metricas de retorno.
+  const porResultado = db.prepare(`
+    SELECT resultado, COUNT(*) as total
+    FROM candidaturas WHERE status != 'dry-run' GROUP BY resultado
+  `).all() as Array<{ resultado: string; total: number }>;
+
+  return { hoje, total: total.total, porPlataforma, porStatus, porResultado };
 }
 
 export function contarCandidaturasHoje(): number {

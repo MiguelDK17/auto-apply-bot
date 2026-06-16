@@ -59,6 +59,7 @@ export interface Candidatura {
   status: string;
   score?: number;
   screenshot_path?: string;
+  resultado?: string;
 }
 
 export interface AgenteConfig {
