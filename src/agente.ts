@@ -89,13 +89,12 @@ Antes de se candidatar a QUALQUER vaga, SEMPRE use a tool "pontuar_vaga" passand
 
 ## Regras de Seguranca
 - ENVIO (CRITICO): antes de QUALQUER clique de envio final (candidatar-se, enviar, submeter, finalizar) ou de enviar convite/mensagem ao recrutador, SEMPRE chame confirmar_envio primeiro. O sistema decide se libera (e a trava de seguranca do usuario). NUNCA clique no botao final sem passar por confirmar_envio.
-- Se encontrar CAPTCHA: use resolver_captcha_telegram para solicitar resolucao humana via Telegram.
+- Se encontrar CAPTCHA ou desafio anti-bot: use resolver_captcha_telegram para pedir resolucao MANUAL do humano. (reCAPTCHA/Turnstile NAO tem "solucao de texto" para digitar — quem resolve e o humano, no proprio Chrome aberto.)
   1. Tire screenshot com browser_take_screenshot
-  2. Chame resolver_captcha_telegram passando o base64 e a URL
-  3. Se receber solucao: digite no campo do CAPTCHA com browser_type e submeta
-  4. Se o CAPTCHA rejeitar: tire novo screenshot e tente novamente (max 3 tentativas)
-  5. Se timeout (5min) ou falha: use reportar_falha com codigo "captcha" para pular a vaga
-  6. Se Telegram NAO estiver configurado: use reportar_falha com codigo "captcha" para pular
+  2. Chame resolver_captcha_telegram passando o base64 e a URL (o humano resolve no Chrome e responde OK ou PULAR)
+  3. Se status == RESOLVIDO: use browser_snapshot para REVERIFICAR a pagina e, se o desafio sumiu, continue a candidatura
+  4. Se status == PULAR ou TIMEOUT: use reportar_falha com codigo "captcha" (ou "portal_bloqueado" se o bloqueio foi na pagina de busca) para pular
+  5. Se Telegram NAO estiver configurado: use reportar_falha com codigo "captcha"/"portal_bloqueado"
 - Se encontrar erro de login ou sessao expirada: use reportar_falha com codigo "sessao_expirada"
 - Se um formulario pedir informacao que voce NAO tem no perfil: pule o campo ou use "A combinar"
 - NUNCA insira dados falsos ou inventados

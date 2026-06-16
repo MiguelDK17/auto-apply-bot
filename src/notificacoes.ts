@@ -187,15 +187,22 @@ function getUpdates(offset: number): Promise<Array<{ update_id: number; message?
  * Envia screenshot do CAPTCHA e aguarda solução do humano via Telegram.
  * Polling com timeout de 5 minutos.
  *
- * @returns Texto da solução ou null se timeout/erro
+ * Honestidade técnica: reCAPTCHA/Turnstile/hCaptcha NÃO têm "solução de texto"
+ * que um humano remoto possa digitar — o token é gerado no contexto do browser.
+ * Por isso pedimos que o humano resolva MANUALMENTE no Chrome real (já aberto) e
+ * apenas confirme (OK) ou peça para pular (PULAR).
+ *
+ * @returns 'resolvido' (humano confirmou), 'pular' (humano pediu) ou 'timeout'.
  */
+export type StatusCaptcha = 'resolvido' | 'pular' | 'timeout';
+
 export async function solicitarResolucaoCaptcha(
   screenshotBase64: string,
   urlVaga: string,
-): Promise<string | null> {
+): Promise<StatusCaptcha> {
   if (!telegramConfig) {
-    log('ERRO', 'CAPTCHA: Telegram não configurado — não é possível solicitar resolução humana.');
-    return null;
+    log('ERRO', 'CAPTCHA: Telegram não configurado — não é possível pedir resolução humana.');
+    return 'timeout';
   }
 
   const chatIdNumero = parseInt(telegramConfig.chatId, 10);
@@ -205,26 +212,25 @@ export async function solicitarResolucaoCaptcha(
   const updatesAntigos = await getUpdates(-1);
   if (updatesAntigos.length > 0) {
     offset = updatesAntigos[updatesAntigos.length - 1].update_id + 1;
-    // Confirma leitura dos antigos
     await getUpdates(offset);
   }
 
-  // 2. Envia foto do CAPTCHA
+  // 2. Envia foto do desafio com instrução de resolução MANUAL
   const fotoBuffer = Buffer.from(screenshotBase64, 'base64');
-  const caption = `🔒 CAPTCHA DETECTADO\n\nURL: ${urlVaga}\n\nResolva o CAPTCHA na imagem e responda com a solução (texto ou código).`;
+  const caption = `🔒 CAPTCHA / desafio anti-bot detectado\n\nURL: ${urlVaga}\n\nResolva MANUALMENTE no Chrome que esta aberto e responda OK quando terminar, ou PULAR para pular esta vaga.`;
 
   const enviou = await enviarFotoTelegram(fotoBuffer, caption);
   if (!enviou) {
     log('ERRO', 'CAPTCHA: Falha ao enviar screenshot para o Telegram.');
-    return null;
+    return 'timeout';
   }
 
-  // 3. Polling por resposta (timeout: 5 minutos)
+  // 3. Polling por confirmação (timeout: 5 minutos)
   const TIMEOUT_MS = 5 * 60 * 1000;
   const inicio = Date.now();
 
-  log('INFO', `CAPTCHA: Aguardando solução via Telegram (timeout: ${TIMEOUT_MS / 1000}s)...`);
-  await enviarTelegram('⏳ Aguardando sua resposta... (timeout: 5 minutos)');
+  log('INFO', `CAPTCHA: Aguardando confirmacao manual via Telegram (timeout: ${TIMEOUT_MS / 1000}s)...`);
+  await enviarTelegram('⏳ Resolva no Chrome e responda OK (ou PULAR). Timeout: 5 minutos.');
 
   while (Date.now() - inicio < TIMEOUT_MS) {
     const updates = await getUpdates(offset);
@@ -232,29 +238,26 @@ export async function solicitarResolucaoCaptcha(
     for (const update of updates) {
       offset = update.update_id + 1;
 
-      // Filtra: só aceita mensagens de texto do nosso chat_id
-      if (
-        update.message &&
-        update.message.chat.id === chatIdNumero &&
-        update.message.text
-      ) {
-        const solucao = update.message.text.trim();
-
-        // Ignora comandos do Telegram (ex: /start)
-        if (solucao.startsWith('/')) continue;
-
-        log('INFO', `CAPTCHA: Solução recebida via Telegram: "${solucao}"`);
-        await enviarTelegram(`✅ Solução recebida: ${solucao}\nInserindo no formulário...`);
-        return solucao;
+      if (update.message && update.message.chat.id === chatIdNumero && update.message.text) {
+        const resposta = update.message.text.trim().toUpperCase();
+        if (['OK', 'PRONTO', 'FEITO', 'RESOLVIDO'].includes(resposta)) {
+          log('INFO', 'CAPTCHA: humano confirmou resolucao manual.');
+          await enviarTelegram('✅ Recebido. Reverificando a pagina...');
+          return 'resolvido';
+        }
+        if (['PULAR', 'SKIP', 'PULA'].includes(resposta)) {
+          log('INFO', 'CAPTCHA: humano pediu para pular a vaga.');
+          await enviarTelegram('⏭️ Ok, pulando esta vaga.');
+          return 'pular';
+        }
+        // Qualquer outra mensagem é ignorada (não é OK nem PULAR)
       }
     }
 
-    // Aguarda 2s entre cada poll (o getUpdates já tem long-polling de 5s)
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
 
-  // Timeout
-  log('WARN', 'CAPTCHA: Timeout — nenhuma solução recebida em 5 minutos.');
-  await enviarTelegram('⏰ Timeout! Nenhuma solução recebida em 5 minutos. Pulando vaga...');
-  return null;
+  log('WARN', 'CAPTCHA: Timeout — nenhuma confirmacao em 5 minutos.');
+  await enviarTelegram('⏰ Timeout! Sem confirmacao em 5 minutos. Pulando vaga...');
+  return 'timeout';
 }

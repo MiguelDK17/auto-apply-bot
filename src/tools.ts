@@ -459,7 +459,7 @@ export const customToolDeclarations: FunctionDeclaration[] = [
   {
     name: 'resolver_captcha_telegram',
     description:
-      'Envia screenshot de um CAPTCHA para o Telegram e aguarda o usuario humano resolver. Retorna a solucao digitada pelo usuario. Use quando encontrar um CAPTCHA que impede o progresso da candidatura. REQUER: Telegram configurado (.env). Timeout: 5 minutos.',
+      'Envia screenshot de um CAPTCHA/desafio anti-bot para o Telegram e pede que o usuario o resolva MANUALMENTE no Chrome aberto, respondendo OK ou PULAR. Retorna status RESOLVIDO / PULAR / TIMEOUT (NAO retorna texto para digitar — reCAPTCHA/Turnstile nao funcionam por digitacao). Apos RESOLVIDO, reverifique a pagina com browser_snapshot. REQUER: Telegram configurado (.env). Timeout: 5 minutos.',
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -1109,29 +1109,27 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const screenshotB64 = args.screenshot_base64 as string;
         const urlCaptcha = args.url_vaga as string;
 
-        log('FALHA', `CAPTCHA detectado em: ${urlCaptcha}. Solicitando resolução via Telegram...`);
+        log('FALHA', `CAPTCHA detectado em: ${urlCaptcha}. Pedindo resolucao MANUAL via Telegram...`);
 
         try {
-          const solucao = await solicitarResolucaoCaptcha(screenshotB64, urlCaptcha);
+          const status = await solicitarResolucaoCaptcha(screenshotB64, urlCaptcha);
 
-          if (solucao) {
+          if (status === 'resolvido') {
             return JSON.stringify({
-              sucesso: true,
-              solucao,
-              instrucao: 'Digite esta solucao no campo do CAPTCHA usando browser_type e depois submeta o formulario. Se o CAPTCHA rejeitar a solucao, tire outro screenshot e chame esta tool novamente (max 3 tentativas).',
+              status: 'RESOLVIDO',
+              instrucao: 'O usuario resolveu o CAPTCHA MANUALMENTE no Chrome. Use browser_snapshot para REVERIFICAR a pagina: se o desafio sumiu e a pagina avancou, continue a candidatura normalmente. Se ainda houver bloqueio, use reportar_falha (codigo "captcha", ou "portal_bloqueado" se for na pagina de listagem).',
             });
           }
 
           return JSON.stringify({
-            sucesso: false,
-            motivo: 'timeout',
-            instrucao: 'Nenhuma solucao recebida em 5 minutos. Use reportar_falha com codigo "captcha" para pular esta vaga.',
+            status: status === 'pular' ? 'PULAR' : 'TIMEOUT',
+            instrucao: 'O CAPTCHA nao foi resolvido. Use reportar_falha com codigo "captcha" (ou "portal_bloqueado" se o bloqueio for na pagina de busca) para pular.',
           });
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
           log('ERRO', `CAPTCHA resolver: ${msg}`);
           return JSON.stringify({
-            sucesso: false,
+            status: 'ERRO',
             motivo: msg,
             instrucao: 'Falha ao solicitar resolucao. Use reportar_falha com codigo "captcha" para pular esta vaga.',
           });
