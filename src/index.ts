@@ -38,7 +38,7 @@ function validarEnv(): AgenteConfig {
 
   return {
     geminiApiKey,
-    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+    geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     cdpEndpoint: process.env.CDP_ENDPOINT || 'http://localhost:9222',
     limiteDiario: parseInt(process.env.LIMITE_DIARIO || '10', 10),
     maxPorExecucao: parseInt(process.env.MAX_POR_EXECUCAO || '5', 10),
@@ -62,7 +62,7 @@ function validarEnv(): AgenteConfig {
     cronHorario: process.env.CRON_HORARIO || '09:00',
     // Multi-LLM
     llmAuxProvider: process.env.LLM_AUX_PROVIDER || 'gemini',
-    llmAuxModel: process.env.LLM_AUX_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+    llmAuxModel: process.env.LLM_AUX_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',

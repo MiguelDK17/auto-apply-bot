@@ -192,8 +192,10 @@ export function exibirResumoTokens(): void {
   log('INFO', '='.repeat(60));
   log('INFO', '  CUSTO DE TOKENS');
   log('INFO', '='.repeat(60));
+  const cachedTotal = registros.reduce((acc, r) => acc + r.cachedTokens, 0);
   log('INFO', `  Total de chamadas: ${registros.length}`);
   log('INFO', `  Total de tokens:   ${tokensTotal.toLocaleString('pt-BR')}`);
+  log('INFO', `  Tokens cacheados:  ${cachedTotal.toLocaleString('pt-BR')} (cache implicito do Gemini; reduz o custo do prefixo repetido)`);
   log('INFO', `  Custo total:       $${custoTotal.toFixed(4)} USD`);
 
   if (registros.length > 0) {
