@@ -4,6 +4,7 @@ dist/
 # Dados pessoais — NUNCA commitar
 config/perfil.json
 config/curriculos.json
+config/respostas.json
 assets/
 curriculos/
 screenshots/
