@@ -9,6 +9,8 @@ import { log } from './logger.js';
 // ============================================================
 
 let cronTimer: ReturnType<typeof setInterval> | null = null;
+let executando = false;
+let ultimaDataExecutada = '';
 
 export function iniciarCron(horario: string, executar: () => Promise<void>): void {
   const [hora, minuto] = horario.split(':').map(Number);
@@ -23,14 +25,24 @@ export function iniciarCron(horario: string, executar: () => Promise<void>): voi
   // Verifica a cada minuto se é hora de executar
   cronTimer = setInterval(async () => {
     const agora = new Date();
-    if (agora.getHours() === hora && agora.getMinutes() === minuto) {
-      log('INFO', 'Cron: Iniciando execução agendada...');
-      try {
-        await executar();
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        log('ERRO', `Cron: Erro na execução agendada — ${msg}`);
-      }
+    const dataHoje = agora.toISOString().slice(0, 10);
+    const ehHorario = agora.getHours() === hora && agora.getMinutes() === minuto;
+
+    // Guardas contra: (a) reentrância (a execução anterior ainda roda); e
+    // (b) disparo duplicado no mesmo dia (vários ticks de 60s podem cair no
+    // mesmo minuto-alvo por drift do event loop).
+    if (!ehHorario || executando || ultimaDataExecutada === dataHoje) return;
+
+    executando = true;
+    ultimaDataExecutada = dataHoje;
+    log('INFO', 'Cron: Iniciando execução agendada...');
+    try {
+      await executar();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      log('ERRO', `Cron: Erro na execução agendada — ${msg}`);
+    } finally {
+      executando = false;
     }
   }, 60_000); // Verifica a cada 60 segundos
 }

@@ -6,10 +6,13 @@ let mcpClient: Client | null = null;
 export async function conectarPlaywrightMCP(cdpEndpoint: string): Promise<Client> {
   console.log(`[MCP] Conectando ao Playwright MCP via CDP: ${cdpEndpoint}`);
 
+  // Versão pinada (não @latest): baixar a versão mais recente a cada execução é
+  // um vetor de supply chain — código novo rodaria com acesso ao seu navegador/
+  // CDP sem revisão. Atualize a versão conscientemente quando desejar.
   const transport = new StdioClientTransport({
     command: 'npx',
     args: [
-      '@playwright/mcp@latest',
+      '@playwright/mcp@0.0.76',
       '--cdp-endpoint',
       cdpEndpoint,
     ],

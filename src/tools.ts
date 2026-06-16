@@ -32,9 +32,6 @@ import {
 import { pontuarVaga } from './scoring.js';
 import type { Perfil, RespostasPredefinidas, AgenteConfig } from './types.js';
 
-// Mapa de tentativas por URL para controle de retry (adaptado do ApplyPilot: attempts tracking)
-const tentativasPorUrl = new Map<string, number>();
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface CurriculoEntry {
@@ -533,6 +530,10 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
   // scoring configurável, e torna o executor previsível para testes.
   const geminiApiKey = config.geminiApiKey;
   const geminiModel = config.geminiModel;
+  // Tentativas por URL (controle de retry, adaptado do ApplyPilot): escopo por
+  // execução — recriado a cada chamada. No modo cron isso evita carregar
+  // contadores de retry de execuções anteriores.
+  const tentativasPorUrl = new Map<string, number>();
   return async function executarTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
       case 'obter_perfil_candidato': {
@@ -656,8 +657,10 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
       }
 
       case 'aguardar': {
-        const min = (args.min_ms as number) || 2000;
-        const max = (args.max_ms as number) || 5000;
+        // Usa os defaults de config (DELAY_MIN/DELAY_MAX do .env) quando o LLM
+        // não especifica — antes essas variáveis eram lidas mas nunca usadas.
+        const min = (args.min_ms as number) || config.delayMin;
+        const max = (args.max_ms as number) || config.delayMax;
         const tempo = Math.floor(Math.random() * (max - min + 1)) + min;
         await new Promise((resolve) => setTimeout(resolve, tempo));
         return `Aguardou ${tempo}ms com sucesso.`;
