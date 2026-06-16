@@ -41,10 +41,12 @@ function validarEnv(): AgenteConfig {
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
     cdpEndpoint: process.env.CDP_ENDPOINT || 'http://localhost:9222',
     limiteDiario: parseInt(process.env.LIMITE_DIARIO || '10', 10),
+    maxPorExecucao: parseInt(process.env.MAX_POR_EXECUCAO || '5', 10),
     delayMin: parseInt(process.env.DELAY_MIN || '2000', 10),
     delayMax: parseInt(process.env.DELAY_MAX || '5000', 10),
     dryRun: process.env.DRY_RUN === 'true',
     scoreMinimo: parseInt(process.env.SCORE_MINIMO || '6', 10),
+    custoMaxUsd: parseFloat(process.env.CUSTO_MAX_USD || '0'),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || '3000', 10),
     // Telegram
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',

@@ -114,6 +114,25 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'confirmar_envio',
+    description:
+      'OBRIGATORIA antes de QUALQUER clique de envio final: botao "Candidatar-se"/"Quero me candidatar"/"Enviar"/"Submeter"/"Finalizar", ou envio de convite/mensagem ao recrutador. Chame esta tool IMEDIATAMENTE antes do clique terminal. Em modo dry-run o sistema BLOQUEIA o envio (nao clique; registre como dry-run e siga). Em producao o sistema libera o clique. E a trava de seguranca que protege o usuario de envios indevidos.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        url_vaga: {
+          type: Type.STRING,
+          description: 'URL da vaga/pagina onde o envio ocorreria',
+        },
+        acao: {
+          type: Type.STRING,
+          description: 'O que sera enviado (ex: "candidatura", "mensagem ao recrutador")',
+        },
+      },
+      required: ['url_vaga'],
+    },
+  },
+  {
     name: 'contar_candidaturas_hoje',
     description:
       'Retorna quantas candidaturas ja foram feitas hoje. Use para verificar se atingiu o limite diario.',
@@ -534,6 +553,9 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
   // execução — recriado a cada chamada. No modo cron isso evita carregar
   // contadores de retry de execuções anteriores.
   const tentativasPorUrl = new Map<string, number>();
+  // Teto de envios reais NESTA execução (protege a conta real de rajadas).
+  // Determinístico no código — não confiado ao LLM.
+  let enviosConfirmados = 0;
   return async function executarTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
       case 'obter_perfil_candidato': {
@@ -552,6 +574,19 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const score = (args.score as number) || 0;
         const empresa = args.empresa as string;
         const tituloVaga = args.titulo_vaga as string;
+
+        // GATE DETERMINISTICO: o codigo garante por construcao que vagas abaixo
+        // do score minimo NUNCA sejam registradas, independente do que o LLM
+        // decida. Sem isso, o gate de score era apenas uma instrucao no prompt.
+        if (score < config.scoreMinimo) {
+          log('AGENTE', `Candidatura BLOQUEADA (score ${score} < minimo ${config.scoreMinimo}): ${tituloVaga} — ${empresa}`);
+          return JSON.stringify({
+            registrado: false,
+            motivo: 'SCORE_ABAIXO_DO_MINIMO',
+            mensagem: `Score ${score} abaixo do minimo ${config.scoreMinimo}. Candidatura NAO registrada. Se ainda nao pontuou esta vaga com pontuar_vaga, faca isso; se ja pontuou e ficou abaixo do minimo, PULE para a proxima vaga.`,
+          });
+        }
+
         // Dry-run é autoritativo via config — não depende mais de o LLM lembrar
         // de passar um argumento (que sequer era declarado na tool).
         const isDryRun = config.dryRun;
@@ -571,6 +606,42 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         return sucesso
           ? 'REGISTRADO: Candidatura salva no banco de dados com sucesso.'
           : 'ERRO: Falha ao registrar candidatura (possivelmente duplicada).';
+      }
+
+      case 'confirmar_envio': {
+        const urlVaga = (args.url_vaga as string) || '';
+        const acao = (args.acao as string) || 'envio';
+
+        // TRAVA TECNICA DE DRY-RUN: garantida por codigo, nao por instrucao no
+        // prompt. Em dry-run, nenhum envio real e liberado — o LLM nao consegue
+        // furar isso "esquecendo" que esta em dry-run.
+        if (config.dryRun) {
+          log('AGENTE', `DRY-RUN: envio bloqueado pelo sistema (${acao}) — ${urlVaga}`);
+          return JSON.stringify({
+            permitido: false,
+            modo: 'dry-run',
+            mensagem: `DRY-RUN: o envio (${acao}) foi BLOQUEADO pelo sistema. NAO clique no botao de envio final. Registre a candidatura com registrar_candidatura (sera gravada como dry-run) e siga para a proxima vaga.`,
+          });
+        }
+
+        // Teto por execução: trava determinística contra rajada de envios reais.
+        if (enviosConfirmados >= config.maxPorExecucao) {
+          log('AGENTE', `Teto por execucao atingido (${config.maxPorExecucao}). Envio bloqueado — ${urlVaga}`);
+          return JSON.stringify({
+            permitido: false,
+            modo: 'producao',
+            motivo: 'TETO_POR_EXECUCAO',
+            mensagem: `Limite de ${config.maxPorExecucao} envios por execucao atingido. NAO envie mais. Finalize a execucao com um resumo.`,
+          });
+        }
+
+        enviosConfirmados += 1;
+        log('AGENTE', `Envio liberado (${acao}) ${enviosConfirmados}/${config.maxPorExecucao} — ${urlVaga}`);
+        return JSON.stringify({
+          permitido: true,
+          modo: 'producao',
+          mensagem: 'PODE_ENVIAR: envio liberado pelo sistema. Pode clicar no botao de envio final agora.',
+        });
       }
 
       case 'contar_candidaturas_hoje': {

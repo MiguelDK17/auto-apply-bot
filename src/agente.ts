@@ -7,7 +7,7 @@ import { customToolDeclarations, criarExecutorDeTools } from './tools.js';
 import { podarHistorico } from './historico.js';
 import { log } from './logger.js';
 import { classificarErroAPI, calcularBackoffRateLimit, MAX_TENTATIVAS } from './erros.js';
-import { registrarUsoTokens } from './token-tracker.js';
+import { registrarUsoTokens, obterCustoTotal } from './token-tracker.js';
 import { perfilParaSystemPrompt } from './anonimizacao.js';
 import type { AgenteConfig, Perfil, SitesConfig } from './types.js';
 
@@ -24,7 +24,7 @@ function buildSystemPrompt(perfil: Perfil, sites: SitesConfig, config: AgenteCon
   return `
 Voce e um agente inteligente de candidatura automatica a vagas de emprego.
 Voce controla um navegador real (Chrome do usuario, ja logado nos sites) atraves das browser tools.
-${dryRun ? '\n** MODO DRY-RUN ATIVO: faca TODO o processo normalmente (navegar, analisar, preencher formularios) mas NAO clique no botao final de envio/submissao. Registre a candidatura com status dry-run. **\n' : ''}
+${dryRun ? '\n** MODO DRY-RUN ATIVO: faca TODO o processo normalmente (navegar, analisar, preencher formularios) mas NAO envie de verdade. O sistema BLOQUEIA o envio automaticamente quando voce chama confirmar_envio. Registre a candidatura com registrar_candidatura (sera gravada como dry-run). **\n' : ''}
 
 ## Seu Objetivo
 Navegar pelos sites configurados, buscar vagas relevantes e se candidatar automaticamente.
@@ -47,9 +47,10 @@ Para CADA site da lista:
    j. Use obter_respostas_predefinidas para consultar respostas-base para perguntas comuns
    k. Preencha o formulario usando browser_fill_form ou browser_type
    l. Use aguardar entre cada acao (2-5 segundos)
-   m. Apos enviar com sucesso, use salvar_screenshot para capturar prova da candidatura
-   n. Use registrar_candidatura para salvar no banco de dados
-   o. Se a vaga foi PULADA (score baixo, localizacao errada), use registrar_vaga_vista para nao reanalisar
+   m. ANTES de clicar no botao final de envio/submissao, SEMPRE chame confirmar_envio. Se a resposta bloquear (dry-run ou teto por execucao), NAO clique no botao — siga a instrucao da mensagem.
+   n. Apos enviar (ou simular no dry-run), use salvar_screenshot para capturar prova
+   o. Use registrar_candidatura para salvar no banco (inclua o score da vaga)
+   p. Se a vaga foi PULADA (score baixo, localizacao errada), use registrar_vaga_vista para nao reanalisar
 5. Se houver botao de "proxima pagina" ou paginacao, navegue para a proxima pagina e repita os passos 3-4
 6. Passe para o proximo site
 
@@ -93,6 +94,7 @@ Antes de se candidatar a qualquer vaga, SEMPRE use a tool "pontuar_vaga" passand
 - Seja conciso: 2-4 frases para campos curtos, 1 paragrafo para campos longos.
 
 ## Regras de Seguranca
+- ENVIO (CRITICO): antes de QUALQUER clique de envio final (candidatar-se, enviar, submeter, finalizar) ou de enviar convite/mensagem ao recrutador, SEMPRE chame confirmar_envio primeiro. O sistema decide se libera (e a trava de seguranca do usuario). NUNCA clique no botao final sem passar por confirmar_envio.
 - Se encontrar CAPTCHA: use resolver_captcha_telegram para solicitar resolucao humana via Telegram.
   1. Tire screenshot com browser_take_screenshot
   2. Chame resolver_captcha_telegram passando o base64 e a URL
@@ -296,6 +298,15 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
 
       // Registra uso de tokens desta chamada
       registrarUsoTokens(config.geminiModel, response.usageMetadata, 'agente');
+
+      // Circuito de parada por custo: limite economico complementar ao
+      // MAX_ITERACOES (so ativo se CUSTO_MAX_USD > 0). Evita queimar dezenas de
+      // chamadas caras num loop improdutivo. Limite soft (avaliado entre iteracoes).
+      if (config.custoMaxUsd > 0 && obterCustoTotal() > config.custoMaxUsd) {
+        log('AGENTE', `Custo maximo atingido ($${obterCustoTotal().toFixed(4)} > $${config.custoMaxUsd} USD). Finalizando.`);
+        respostaFinal = `Execucao interrompida: custo maximo de $${config.custoMaxUsd} USD atingido.`;
+        break;
+      }
 
       const candidate = response.candidates?.[0];
       if (!candidate?.content) {

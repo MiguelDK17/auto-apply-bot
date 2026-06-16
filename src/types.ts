@@ -58,11 +58,14 @@ export interface AgenteConfig {
   geminiModel: string;
   cdpEndpoint: string;
   limiteDiario: number;
+  maxPorExecucao: number;
   delayMin: number;
   delayMax: number;
   dryRun: boolean;
   scoreMinimo: number;
   dashboardPort: number;
+  // Circuito de parada por custo (0 = desativado)
+  custoMaxUsd: number;
   // Telegram (opcional)
   telegramBotToken: string;
   telegramChatId: string;
