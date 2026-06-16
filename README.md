@@ -137,12 +137,14 @@ npm start
 |---|---|---|
 | `GEMINI_API_KEY` | Chave da API do Google Gemini | *obrigatório* |
 | `CDP_ENDPOINT` | Endpoint CDP do Chrome | `http://localhost:9222` |
-| `GEMINI_MODEL` | Modelo do Gemini | `gemini-2.5-pro` |
-| `LIMITE_DIARIO` | Max candidaturas por execução | `10` |
+| `GEMINI_MODEL` | Modelo do Gemini (flash é ~16x mais barato) | `gemini-2.5-flash` |
+| `LIMITE_DIARIO` | Max candidaturas por dia | `10` |
+| `MAX_POR_EXECUCAO` | Teto de envios reais por execução (anti-rajada) | `5` |
 | `DELAY_MIN` | Delay mínimo entre ações (ms) | `2000` |
 | `DELAY_MAX` | Delay máximo entre ações (ms) | `5000` |
 | `SCORE_MINIMO` | Score mínimo para aplicar (1-10) | `6` |
-| `DRY_RUN` | Modo teste (não envia de verdade) | `true` |
+| `CUSTO_MAX_USD` | Teto de custo por execução em USD (0 = desativado) | `0` |
+| `DRY_RUN` | Modo teste — trava técnica que bloqueia o envio | `true` |
 | `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
 | `TELEGRAM_BOT_TOKEN` | Token do bot Telegram | *opcional* |
 | `TELEGRAM_CHAT_ID` | Chat ID do Telegram | *opcional* |
@@ -153,7 +155,7 @@ npm start
 | `CRON_ATIVO` | Ativar agendamento | `false` |
 | `CRON_HORARIO` | Horário da execução | `09:00` |
 | `LLM_AUX_PROVIDER` | Provider auxiliar: `gemini`, `ollama`, `openai` | `gemini` |
-| `LLM_AUX_MODEL` | Modelo do provider auxiliar | `gemini-2.5-pro` |
+| `LLM_AUX_MODEL` | Modelo do provider auxiliar | `gemini-2.5-flash` |
 | `OLLAMA_URL` | URL do servidor Ollama | `http://localhost:11434` |
 | `OPENAI_API_KEY` | Chave da API OpenAI (ou compatível) | *opcional* |
 | `OPENAI_BASE_URL` | Base URL da API OpenAI-compatible | `https://api.openai.com/v1` |
@@ -201,6 +203,38 @@ O bot avalia cada vaga antes de aplicar:
 | Presencial/híbrido fora da cidade | -3 |
 
 Score final entre 1-10. Só aplica se `score >= SCORE_MINIMO`.
+
+**Critérios eliminatórios** (forçam PULAR, independente do score):
+- **Idioma** — a vaga exige inglês acima do seu `nivel_ingles` do perfil.
+- **Localização** — vaga presencial/híbrida fora da sua cidade quando você só aceita remoto.
+- **Blacklist** — empresa ou termo de título que você listou em `blacklist_empresas` / `blacklist_termos_titulo`.
+
+---
+
+## 🎛️ Controle e Segurança (copiloto, não autopiloto)
+
+A filosofia: o **código** garante as decisões críticas (não a "boa vontade" do LLM), e os pontos de risco são determinísticos:
+
+- **Trava técnica de dry-run** — em `DRY_RUN=true`, o envio é bloqueado **no código** (tool `confirmar_envio`), não por uma instrução no prompt que o modelo poderia ignorar.
+- **Gate de score** — `registrar_candidatura` recusa qualquer vaga abaixo do `SCORE_MINIMO`.
+- **Teto por execução** — `MAX_POR_EXECUCAO` limita envios reais por rodada (anti-rajada, protege sua conta).
+- **Teto de custo** — `CUSTO_MAX_USD` interrompe o loop se o gasto passar do limite.
+- **Abandono de portal** — se um portal bloqueia na entrada (Cloudflare), o bot abandona aquele portal e segue para o próximo, em vez de insistir.
+
+> ⚠️ **Risco de conta**: o bot usa seu Chrome **logado** e automatizar portais viola os ToS (especialmente o LinkedIn). Comece em `DRY_RUN=true`, use volumes baixos e, de preferência, uma conta não-principal.
+
+---
+
+## 📈 Acompanhamento de Resultados
+
+A candidatura não morre em "aplicado": você registra o desfecho e o dashboard mostra **métricas de retorno** (taxa de resposta, entrevistas) em vez de só volume.
+
+```bash
+npm run resultado                      # lista candidaturas com seus ids
+npm run resultado 42 entrevista        # marca o desfecho da candidatura 42
+```
+
+Resultados válidos: `aguardando`, `respondido`, `entrevista`, `oferta`, `rejeitado`, `sem_resposta`.
 
 ---
 
@@ -262,18 +296,17 @@ Adaptado do [ApplyPilot](https://github.com/nicognaW/ApplyPilot), o bot classifi
 
 ---
 
-## 🔒 CAPTCHA Handling via Telegram
+## 🔒 CAPTCHA: checkpoint humano (não "resolução automática")
 
-Adaptado do [beatwad](https://medium.com/@beatwad): quando o bot encontra um CAPTCHA, em vez de parar, ele solicita ajuda humana via Telegram:
+Seja realista: reCAPTCHA, Turnstile e hCaptcha **não têm "solução de texto"** que alguém possa digitar remotamente — o token é gerado no contexto do navegador a partir de sinais comportamentais. Então o bot **não resolve** CAPTCHA; ele te chama para resolver:
 
-1. O agente detecta o CAPTCHA e tira screenshot
-2. Envia a foto para o Telegram com instruções
-3. Aguarda o humano responder com a solução (polling, timeout: 5 min)
-4. Recebe a solução e digita no campo do CAPTCHA
-5. Se falhar, repete até 3 tentativas
-6. Se timeout ou 3 falhas: pula a vaga e continua
+1. O agente detecta o CAPTCHA/desafio e tira screenshot
+2. Envia a foto para o Telegram pedindo que você resolva **manualmente no Chrome aberto**
+3. Você resolve no Chrome e responde **OK** (ou **PULAR**) — polling, timeout 5 min
+4. Em `OK`, o bot **reverifica a página** (browser_snapshot) e só continua se o desafio sumiu
+5. Em `PULAR`/timeout, a vaga é pulada (`captcha`); se o bloqueio foi na página de busca, o portal inteiro é abandonado (`portal_bloqueado`)
 
-**Requisitos**: `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` configurados no `.env`.
+**Requisitos**: `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` no `.env`. Sem Telegram, o bot pula a vaga.
 
 ---
 
@@ -405,7 +438,9 @@ auto-apply-bot/
 
 - [ ] Suporte a mais plataformas (Catho, Trampos, etc.)
 - [x] ~~CAPTCHA handling via Telegram (humano resolve, bot continua)~~
-- [ ] Blacklist de empresas/títulos
+- [x] ~~Blacklist de empresas/títulos~~
+- [x] ~~Loop de feedback de resultados (entrevista/oferta/rejeição) + métricas de funil~~
+- [x] ~~Critérios eliminatórios de fit (idioma, localização)~~
 - [x] ~~Mensagem automática para recrutadores~~
 - [x] ~~Multi-LLM (Gemini + Ollama local como fallback)~~
 - [x] ~~Anonimização de dados antes de enviar ao LLM~~
