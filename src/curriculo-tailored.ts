@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { log } from './logger.js';
 import { gerarTextoAux } from './llm-adapter.js';
-import { anonimizarPerfil, desanonimizar } from './anonimizacao.js';
+import { anonimizarPerfil, desanonimizar, contemPlaceholderResidual } from './anonimizacao.js';
 import type { Perfil } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -67,7 +67,8 @@ export function gerarHTMLBase(perfil: Perfil): string {
 
 </body>
 </html>`.replace('{{EXPERIENCIAS}}', experienciasHTML)
-    .replace('{{SKILLS}}', skillsCategorizadas);
+    .replace('{{SKILLS}}', skillsCategorizadas)
+    .replace('{{RESUMO}}', perfil.resumo_profissional);
 }
 
 function categorizarSkills(perfil: Perfil): string {
@@ -233,7 +234,16 @@ export async function gerarCurriculoTailored(
   if (!validacao.valido) {
     log('WARN', `Curriculo tailored rejeitado: ${validacao.motivo}`);
     log('WARN', 'Usando HTML base sem tailoring como fallback de seguranca.');
-    htmlOtimizado = htmlBase.replace('{{RESUMO}}', perfil.resumo_profissional);
+    // htmlBase foi gerado com perfilAnonimo (cabeçalho com [CANDIDATO], email e
+    // telefone fake). É OBRIGATÓRIO desanonimizar aqui, senão o PDF sai com
+    // dados falsos. O {{RESUMO}} já vem preenchido por gerarHTMLBase.
+    htmlOtimizado = desanonimizar(htmlBase, mapa);
+  }
+
+  // Segurança: nenhum placeholder de anonimização pode sobrar no documento final
+  // (evita gerar um currículo com dados falsos para upload/envio ao recrutador).
+  if (contemPlaceholderResidual(htmlOtimizado)) {
+    log('WARN', 'Curriculo ainda contem placeholders apos restauracao — revise o resultado antes de enviar.');
   }
 
   // Salvar HTML

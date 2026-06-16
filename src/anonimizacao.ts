@@ -69,6 +69,16 @@ export function desanonimizar(texto: string, mapa: MapaAnonimizacao): string {
 }
 
 /**
+ * Verifica se restou algum placeholder de anonimização no texto.
+ * Indício de que a de-anonimização falhou (ex.: o LLM reformatou o placeholder),
+ * o que faria um currículo/carta sair com dados falsos. Usado como verificação
+ * de segurança antes de gerar o PDF ou enviar conteúdo a um recrutador.
+ */
+export function contemPlaceholderResidual(texto: string): boolean {
+  return Object.values(PLACEHOLDERS).some((placeholder) => texto.includes(placeholder));
+}
+
+/**
  * Cria versão do perfil para o system prompt do agente principal.
  * Remove PII de contato mas mantém dados profissionais + nome.
  */
