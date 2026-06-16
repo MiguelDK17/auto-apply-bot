@@ -35,6 +35,25 @@ import type { Perfil, RespostasPredefinidas, AgenteConfig } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Deriva o domínio registrável de uma URL (ex.: portal.gupy.io -> gupy.io,
+ * www.vagas.com.br -> vagas.com.br). Usado para agrupar URLs do mesmo portal e
+ * abandonar o portal inteiro quando ele bloqueia na entrada. Retorna '' se a URL
+ * for inválida.
+ */
+export function dominioDe(url: string): string {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    const p = host.split('.');
+    if (p.length <= 2) return host;
+    // Trata TLDs de 2 níveis (com.br, etc.): pega 3 rótulos quando o penúltimo é SLD.
+    const slds = new Set(['com', 'net', 'org', 'gov', 'edu', 'co']);
+    return slds.has(p[p.length - 2]) ? p.slice(-3).join('.') : p.slice(-2).join('.');
+  } catch {
+    return '';
+  }
+}
+
 interface CurriculoEntry {
   id: string;
   arquivo: string;
@@ -561,6 +580,9 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
   // Teto de envios reais NESTA execução (protege a conta real de rajadas).
   // Determinístico no código — não confiado ao LLM.
   let enviosConfirmados = 0;
+  // Portais que bloquearam na entrada NESTA execução — abandonados por completo
+  // (não adianta tentar outras URLs/páginas; só queima iterações e risco de ban).
+  const portaisBloqueados = new Set<string>();
   return async function executarTool(name: string, args: Record<string, unknown>): Promise<string> {
     switch (name) {
       case 'obter_perfil_candidato': {
@@ -900,6 +922,34 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const urlVaga = args.url_vaga as string;
         const codigoFalha = args.codigo_falha as string;
         const descricaoFalha = args.descricao as string;
+        const dominio = dominioDe(urlVaga);
+
+        // P7: portal já bloqueado nesta execução — nem tenta, manda pular o site.
+        if (dominio && portaisBloqueados.has(dominio)) {
+          return JSON.stringify({
+            tipo: 'PORTAL_BLOQUEADO',
+            acao: 'PULAR_PORTAL',
+            mensagem: `O portal ${dominio} ja foi bloqueado nesta execucao. Va direto para o PROXIMO SITE.`,
+          });
+        }
+
+        // Bloqueio explícito na ENTRADA do portal: abandona o portal inteiro.
+        if (codigoFalha === 'portal_bloqueado') {
+          if (dominio) portaisBloqueados.add(dominio);
+          log('FALHA', `PORTAL BLOQUEADO: ${dominio || urlVaga} — abandonando o portal nesta execucao`);
+          if (!config.dryRun) await new Promise(r => setTimeout(r, 30_000)); // pausa pós-bloqueio
+          return JSON.stringify({
+            tipo: 'PORTAL_BLOQUEADO',
+            acao: 'PULAR_PORTAL',
+            mensagem: `Bloqueio na entrada do portal ${dominio || urlVaga}. NAO tente outras URLs nem pagine aqui. Va para o PROXIMO SITE da lista.`,
+          });
+        }
+
+        // Pausa pós-bloqueio (só produção) para sinais de anti-bot numa vaga:
+        // protege a conta sem abandonar o portal inteiro (evita falso positivo).
+        if (!config.dryRun && (codigoFalha === 'cloudflare' || codigoFalha === 'site_bloqueado')) {
+          await new Promise(r => setTimeout(r, 30_000));
+        }
 
         if (ehFalhaPermanente(codigoFalha)) {
           // Falha permanente: registra como vista e nunca mais tenta

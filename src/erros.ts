@@ -18,6 +18,7 @@ export const FALHAS_PERMANENTES = new Set([
   'sso_obrigatorio',          // Requer SSO (Google, Microsoft, etc.)
   'site_bloqueado',           // Site bloqueou acesso (ban, IP block)
   'cloudflare',               // Proteção Cloudflare/anti-bot ativa
+  'portal_bloqueado',         // Bloqueio na entrada do portal — abandona o portal inteiro
   'formulario_incompativel',  // Formulário que o bot não consegue preencher
   'vaga_interna',             // Vaga exclusiva para funcionários internos
   'idioma_incompativel',      // Vaga exige idioma que o candidato não tem

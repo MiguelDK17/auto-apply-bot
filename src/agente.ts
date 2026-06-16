@@ -195,6 +195,7 @@ O sistema classifica automaticamente e decide se deve pular ou retentar.
 - sso_obrigatorio: Requer login SSO (Google, Microsoft)
 - site_bloqueado: Site bloqueou o acesso
 - cloudflare: Protecao anti-bot ativa
+- portal_bloqueado: Bloqueio (Cloudflare/CAPTCHA/login) na PAGINA DE BUSCA/LISTAGEM, antes de ver as vagas. O sistema ABANDONA o portal inteiro e voce vai para o proximo site — NAO insista em outras URLs/paginas deste portal. (Se o bloqueio for numa vaga especifica, use o codigo especifico como captcha.)
 - formulario_incompativel: Formulario que voce nao consegue preencher
 - vaga_interna: Exclusiva para funcionarios
 - idioma_incompativel: Exige idioma que o candidato nao tem
