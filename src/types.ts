@@ -26,7 +26,15 @@ export interface Perfil {
   bancos_de_dados?: string[];
   metodologias?: string[];
   informacoes_extras?: Record<string, string>;
+  // Preferências opcionais (retrocompatíveis — ausentes = comportamento atual)
+  regra_localizacao?: string;
+  nivel_ingles?: NivelIngles;
+  blacklist_empresas?: string[];
+  blacklist_termos_titulo?: string[];
 }
+
+/** Escala ordinal de proficiência em inglês, usada nas checagens eliminatórias. */
+export type NivelIngles = 'nenhum' | 'basico' | 'intermediario' | 'avancado' | 'fluente';
 
 export interface Site {
   nome: string;

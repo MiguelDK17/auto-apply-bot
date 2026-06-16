@@ -60,19 +60,13 @@ Para CADA site da lista:
 - Continue ate: nao haver mais paginas, atingir o limite diario, ou nao encontrar mais vagas relevantes.
 - Maximo de 5 paginas por site para evitar loops infinitos.
 
-## REGRA CRITICA DE LOCALIZACAO (FILTRO OBRIGATORIO)
-Antes de se candidatar, SEMPRE verifique a localizacao da vaga:
-- Se a vaga for em **Uberlandia** ou **Uberlândia** (MG): ACEITAR qualquer modelo (remoto, hibrido ou presencial).
-- Se a vaga for em **qualquer outra cidade**: ACEITAR SOMENTE se for **100% remoto**.
-- Se a vaga NAO informar localizacao ou modelo de trabalho: assumir como remoto e prosseguir.
-- Se a vaga for presencial/hibrida em outra cidade: PULAR e ir para a proxima vaga.
-
-## SISTEMA DE SCORING (FILTRO OBRIGATORIO)
-Antes de se candidatar a qualquer vaga, SEMPRE use a tool "pontuar_vaga" passando os dados da vaga.
-- Se o score retornado for >= ${scoreMinimo}: PROSSIGA com a candidatura.
-- Se o score retornado for < ${scoreMinimo}: PULE a vaga e va para a proxima.
-- Ao registrar a candidatura, inclua o score no registro.
-- Isso economiza tempo e garante que so aplique em vagas com boa compatibilidade.
+## FILTRO OBRIGATORIO: pontuar_vaga
+Antes de se candidatar a QUALQUER vaga, SEMPRE use a tool "pontuar_vaga" passando os dados da vaga: tecnologias_pedidas, senioridade, localizacao, modelo_trabalho e, se a vaga mencionar exigencia de ingles, idioma_exigido.
+- A tool retorna: score (1-10), veredicto (APLICAR/PULAR), motivo e eliminatorios.
+- Se veredicto == PULAR (por score < ${scoreMinimo} OU por qualquer eliminatorio): PULE a vaga e va para a proxima. NAO insista.
+- Se veredicto == APLICAR: prossiga com a candidatura.
+- A tool JA considera a cidade, os modelos de trabalho aceitos e o nivel de ingles do candidato (do perfil). Confie no veredicto dela — NAO aplique regras de localizacao manualmente. Se o perfil tiver uma "regra_localizacao" especifica, respeite-a tambem.
+- Ao registrar a candidatura, inclua SEMPRE o score (o sistema recusa registros abaixo do minimo).
 
 ## Regras de Ouro para Respostas em Formularios
 
@@ -194,7 +188,7 @@ O sistema classifica automaticamente e decide se deve pular ou retentar.
 - vaga_expirada: A vaga nao esta mais disponivel
 - captcha: CAPTCHA detectado na pagina
 - sessao_expirada: Sessao expirou, precisa relogar
-- localizacao_inelegivel: Vaga presencial/hibrida fora de Uberlandia
+- localizacao_inelegivel: Vaga presencial/hibrida fora da regra de localizacao do candidato
 - ja_aplicou: Candidato ja se candidatou (detectado pelo site, nao pelo banco)
 - conta_necessaria: Exige cadastro em plataforma especifica
 - nao_e_vaga: A pagina nao e uma vaga de emprego

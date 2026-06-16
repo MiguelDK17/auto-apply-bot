@@ -11,7 +11,7 @@ export const FALHAS_PERMANENTES = new Set([
   'vaga_expirada',            // Vaga fechada ou não existe mais
   'captcha',                  // CAPTCHA detectado (sem handler ainda)
   'sessao_expirada',          // Login/sessão expirou — precisa relogar
-  'localizacao_inelegivel',   // Presencial/híbrido fora de Uberlândia
+  'localizacao_inelegivel',   // Presencial/híbrido fora da regra de localização do candidato
   'ja_aplicou',               // Candidato já se candidatou a esta vaga
   'conta_necessaria',         // Precisa criar conta em plataforma específica
   'nao_e_vaga',               // Página não é uma vaga de emprego

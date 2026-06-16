@@ -30,6 +30,7 @@ import {
   MAX_TENTATIVAS,
 } from './erros.js';
 import { pontuarVaga } from './scoring.js';
+import { estaNaBlacklist } from './blacklist.js';
 import type { Perfil, RespostasPredefinidas, AgenteConfig } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -185,6 +186,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
         localizacao: {
           type: Type.STRING,
           description: 'Cidade/estado da vaga',
+        },
+        idioma_exigido: {
+          type: Type.STRING,
+          description: 'Nivel de ingles que a vaga EXIGE, se mencionado na descricao: nenhum, basico, intermediario, avancado ou fluente. Deixe vazio se a vaga nao exige ingles.',
         },
       },
       required: ['titulo_vaga', 'tecnologias_pedidas'],
@@ -575,6 +580,17 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const empresa = args.empresa as string;
         const tituloVaga = args.titulo_vaga as string;
 
+        // Guard de blacklist (garantia por construcao, mesmo se o agente furar o pre-filtro).
+        const blReg = estaNaBlacklist(empresa, tituloVaga, perfil.blacklist_empresas, perfil.blacklist_termos_titulo);
+        if (blReg.bloqueado) {
+          log('AGENTE', `Candidatura BLOQUEADA (blacklist): ${tituloVaga} — ${empresa}`);
+          return JSON.stringify({
+            registrado: false,
+            motivo: 'BLACKLIST',
+            mensagem: `${blReg.motivo}. Candidatura NAO registrada. Pule para a proxima vaga.`,
+          });
+        }
+
         // GATE DETERMINISTICO: o codigo garante por construcao que vagas abaixo
         // do score minimo NUNCA sejam registradas, independente do que o LLM
         // decida. Sem isso, o gate de score era apenas uma instrucao no prompt.
@@ -664,11 +680,33 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
             senioridade: args.senioridade as string | undefined,
             localizacao: args.localizacao as string | undefined,
             modelo_trabalho: args.modelo_trabalho as string | undefined,
+            idioma_exigido: args.idioma_exigido as string | undefined,
           },
-          perfil.stack_principal,
-          perfil.cidade,
+          {
+            stackPrincipal: perfil.stack_principal,
+            cidade: perfil.cidade,
+            modelosAceitos: perfil.modelo_trabalho,
+            nivelIngles: perfil.nivel_ingles,
+          },
           config.scoreMinimo,
         );
+
+        // Blacklist declarativa do candidato (exclusão dura, separada do score):
+        // mais robusta que confiar no LLM lembrar de evitar uma empresa.
+        const blPontuar = estaNaBlacklist(
+          (args.empresa as string) || '',
+          (args.titulo_vaga as string) || '',
+          perfil.blacklist_empresas,
+          perfil.blacklist_termos_titulo,
+        );
+        if (blPontuar.bloqueado) {
+          return JSON.stringify({
+            score: resultado.score,
+            veredicto: 'PULAR',
+            motivo: blPontuar.motivo,
+            eliminatorios: [blPontuar.motivo],
+          });
+        }
         return JSON.stringify(resultado);
       }
 

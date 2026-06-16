@@ -24,6 +24,9 @@
   ],
   "cidade": "Sua Cidade, UF",
   "regra_localizacao": "Descreva sua regra de localizacao. Ex: Se a vaga for na minha cidade, aceitar qualquer modelo. Se for em outra cidade, aceitar somente remoto.",
+  "nivel_ingles": "intermediario",
+  "blacklist_empresas": [],
+  "blacklist_termos_titulo": ["estagio", "trainee"],
   "disponibilidade": "Imediata",
   "palavras_chave_busca": [
     "Desenvolvedor Backend",
