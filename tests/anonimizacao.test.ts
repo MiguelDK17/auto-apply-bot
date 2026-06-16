@@ -74,6 +74,19 @@ describe('desanonimizar — round-trip', () => {
     expect(restaurado).toContain('(34) 99999-1234');
     expect(contemPlaceholderResidual(restaurado)).toBe(false);
   });
+
+  it('não interpreta padrões especiais de regex ($&, $1) no valor real', () => {
+    // Cenário: valor real contém sequências que o String.replace trataria como
+    // referências de captura — devem ser inseridas literalmente
+    const mapa = { 'Cifras $& Cia $1': '[CANDIDATO]' };
+    const texto = 'Empresa: [CANDIDATO]';
+
+    // Ação
+    const restaurado = desanonimizar(texto, mapa);
+
+    // Validação: literal, sem interpretar $& nem $1
+    expect(restaurado).toBe('Empresa: Cifras $& Cia $1');
+  });
 });
 
 describe('contemPlaceholderResidual', () => {
