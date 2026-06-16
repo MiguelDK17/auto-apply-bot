@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { log } from './logger.js';
 import { gerarTextoAux } from './llm-adapter.js';
 import { anonimizarPerfil, desanonimizar } from './anonimizacao.js';
+import { detectarSkillsFabricadas, limparMarkdown, skillsReaisDoPerfil } from './validacao-skills.js';
 import type { Perfil } from './types.js';
 
 // Cache em memória para evitar gerar a mesma cover letter 2x
@@ -77,30 +78,14 @@ export async function gerarCoverLetter(
   const prompt = buildCoverLetterPrompt(perfilAnonimo, descricaoVaga, empresa, tituloVaga);
   const response = await gerarTextoAux(prompt, 'cover_letter');
 
-  let texto = desanonimizar(response.text, mapa);
-
-  // Limpar possíveis artefatos de markdown
-  if (texto.startsWith('```')) {
-    texto = texto.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
-  }
+  let texto = limparMarkdown(desanonimizar(response.text, mapa));
 
   if (!texto || texto.length < 50) {
     throw new Error('Cover letter gerada muito curta ou vazia');
   }
 
-  // Validação: verificar se não fabricou skills
-  const textoLower = texto.toLowerCase();
-  const skillsFabricadas = [
-    'python', 'django', 'golang', 'rust', 'c#', '.net',
-    'angular', 'vue.js', 'svelte', 'kubernetes', 'terraform',
-    'machine learning', 'deep learning', 'scala', 'kotlin',
-    'php', 'laravel', 'ruby', 'rails',
-  ];
-
-  const skillsReais = perfil.stack_principal.map(s => s.toLowerCase());
-  const fabricadas = skillsFabricadas.filter(s =>
-    textoLower.includes(s) && !skillsReais.some(r => r.includes(s)),
-  );
+  // Validação anti-fabricação (lista canônica em validacao-skills.ts)
+  const fabricadas = detectarSkillsFabricadas(texto, skillsReaisDoPerfil(perfil));
 
   if (fabricadas.length > 0) {
     log('WARN', `Cover letter mencionou skills fabricadas: ${fabricadas.join(', ')}. Regenerando...`);
@@ -108,10 +93,7 @@ export async function gerarCoverLetter(
       prompt + '\n\nATENCAO REDOBRADA: Voce ERROU na tentativa anterior e mencionou tecnologias que o candidato NAO possui. Use SOMENTE: ' + perfil.stack_principal.join(', '),
       'cover_letter_retry',
     );
-    texto = desanonimizar(response2.text, mapa);
-    if (texto.startsWith('```')) {
-      texto = texto.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
-    }
+    texto = limparMarkdown(desanonimizar(response2.text, mapa));
   }
 
   cacheGerados.set(hash, texto);

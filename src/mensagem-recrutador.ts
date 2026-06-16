@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { log } from './logger.js';
 import { gerarTextoAux } from './llm-adapter.js';
 import { anonimizarPerfil, desanonimizar } from './anonimizacao.js';
+import { detectarSkillsFabricadas, limparMarkdown, skillsReaisDoPerfil } from './validacao-skills.js';
 import type { Perfil } from './types.js';
 
 // Cache em memória para evitar gerar a mesma mensagem 2x
@@ -107,12 +108,7 @@ export async function gerarMensagemRecrutador(
 
   const response = await gerarTextoAux(prompt, 'mensagem_recrutador');
 
-  let texto = desanonimizar(response.text, mapa);
-
-  // Limpar artefatos de markdown
-  if (texto.startsWith('```')) {
-    texto = texto.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
-  }
+  let texto = limparMarkdown(desanonimizar(response.text, mapa));
 
   // Remover aspas envolventes
   if ((texto.startsWith('"') && texto.endsWith('"')) || (texto.startsWith("'") && texto.endsWith("'"))) {
@@ -136,19 +132,8 @@ export async function gerarMensagemRecrutador(
     texto = ultimoPonto > 200 ? cortado.substring(0, ultimoPonto + 1) : cortado;
   }
 
-  // Validação anti-fabricação (mesma lógica da cover letter)
-  const textoLower = texto.toLowerCase();
-  const skillsFabricadas = [
-    'python', 'django', 'golang', 'rust', 'c#', '.net',
-    'angular', 'vue.js', 'svelte', 'kubernetes', 'terraform',
-    'machine learning', 'deep learning', 'scala', 'kotlin',
-    'php', 'laravel', 'ruby', 'rails',
-  ];
-
-  const skillsReais = perfil.stack_principal.map(s => s.toLowerCase());
-  const fabricadas = skillsFabricadas.filter(s =>
-    textoLower.includes(s) && !skillsReais.some(r => r.includes(s)),
-  );
+  // Validação anti-fabricação (lista canônica em validacao-skills.ts)
+  const fabricadas = detectarSkillsFabricadas(texto, skillsReaisDoPerfil(perfil));
 
   if (fabricadas.length > 0) {
     log('WARN', `Mensagem recrutador mencionou skills fabricadas: ${fabricadas.join(', ')}. Regenerando...`);
@@ -156,10 +141,7 @@ export async function gerarMensagemRecrutador(
       prompt + '\n\nATENCAO: Voce mencionou tecnologias FALSAS. Use SOMENTE: ' + perfil.stack_principal.join(', ') + '. MAXIMO 280 caracteres.',
       'mensagem_recrutador_retry',
     );
-    texto = desanonimizar(response2.text, mapa);
-    if (texto.startsWith('```')) {
-      texto = texto.replace(/^```\w*\n?/, '').replace(/\n?```$/, '').trim();
-    }
+    texto = limparMarkdown(desanonimizar(response2.text, mapa));
     if (texto.length > 280) {
       texto = texto.substring(0, 280);
     }

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { log } from './logger.js';
 import { gerarTextoAux } from './llm-adapter.js';
 import { anonimizarPerfil, desanonimizar, contemPlaceholderResidual } from './anonimizacao.js';
+import { detectarSkillsFabricadas, limparMarkdown, skillsReaisDoPerfil } from './validacao-skills.js';
 import type { Perfil } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -203,19 +204,7 @@ export async function gerarCurriculoTailored(
   try {
     const response = await gerarTextoAux(prompt, 'curriculo_tailored');
 
-    htmlOtimizado = response.text;
-
-    // Limpar possíveis artefatos de markdown
-    if (htmlOtimizado.startsWith('```html')) {
-      htmlOtimizado = htmlOtimizado.slice(7);
-    }
-    if (htmlOtimizado.startsWith('```')) {
-      htmlOtimizado = htmlOtimizado.slice(3);
-    }
-    if (htmlOtimizado.endsWith('```')) {
-      htmlOtimizado = htmlOtimizado.slice(0, -3);
-    }
-    htmlOtimizado = htmlOtimizado.trim();
+    htmlOtimizado = limparMarkdown(response.text);
 
     if (!htmlOtimizado.includes('<!DOCTYPE html') && !htmlOtimizado.includes('<html')) {
       throw new Error('Gemini retornou resposta que nao e HTML valido');
@@ -285,54 +274,15 @@ export async function gerarCurriculoTailored(
 // ========== VALIDACAO ANTI-FABRICACAO ==========
 
 function validarHTML(html: string, perfil: Perfil): { valido: boolean; motivo: string } {
-  const htmlLower = html.toLowerCase();
-
-  // Lista de tecnologias suspeitas (que o candidato NÃO tem)
-  const techsSuspeitas = [
-    'python', 'django', 'flask', 'fastapi',
-    'golang', 'go lang', 'rust',
-    'c#', 'c sharp', '.net', 'asp.net',
-    'angular', 'vue.js', 'vuejs', 'svelte',
-    'kubernetes', 'k8s', 'terraform', 'ansible',
-    'aws certified', 'azure certified', 'gcp certified',
-    'machine learning', 'deep learning', 'tensorflow', 'pytorch',
-    'scala', 'kotlin', 'swift', 'objective-c',
-    'php', 'laravel', 'symfony',
-    'ruby', 'rails',
-    'elasticsearch', 'redis', 'kafka', 'rabbitmq',
-    'graphql',
-    'spring boot', 'spring cloud', 'spring security',
-    'microservices architecture', 'event-driven architecture',
-    'clean architecture', 'hexagonal architecture', 'ddd',
-  ];
-
-  // Verificar skills que o candidato realmente tem (para não dar falso positivo)
-  const skillsReais = [
-    ...perfil.stack_principal,
-    ...(perfil.bancos_de_dados ?? []),
-    ...(perfil.metodologias ?? []),
-    'api', 'rest', 'restful', 'ci/cd', 'git', 'oauth', 'keycloak',
-    'firebase', 'clicksign', 'i18n', 'camunda', 'bpm',
-  ].map(s => s.toLowerCase());
-
-  const fabricadas: string[] = [];
-  for (const tech of techsSuspeitas) {
-    if (htmlLower.includes(tech)) {
-      // Verificar se não é uma skill real do candidato
-      const ehReal = skillsReais.some(s => s.toLowerCase().includes(tech) || tech.includes(s.toLowerCase()));
-      if (!ehReal) {
-        fabricadas.push(tech);
-      }
-    }
-  }
-
+  // Usa a validação canônica de validacao-skills.ts (antes a lista estava
+  // duplicada e divergente aqui, na cover-letter e na mensagem-recrutador).
+  const fabricadas = detectarSkillsFabricadas(html, skillsReaisDoPerfil(perfil));
   if (fabricadas.length > 0) {
     return {
       valido: false,
       motivo: `Tecnologias fabricadas detectadas: ${fabricadas.join(', ')}`,
     };
   }
-
   return { valido: true, motivo: '' };
 }
 
