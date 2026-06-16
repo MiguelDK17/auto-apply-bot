@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { inicializarBanco, fecharBanco, verificarJaAplicou } from '../src/database';
-import { criarExecutorDeTools } from '../src/tools';
+import { criarExecutorDeTools, dominioDe } from '../src/tools';
 import type { Perfil, AgenteConfig } from '../src/types';
 
 // Perfil minimo para o executor
@@ -99,5 +99,40 @@ describe('executor — trava tecnica de dry-run (confirmar_envio)', () => {
     expect(r1).toMatch(/PODE_ENVIAR/);
     expect(r2).toMatch(/PODE_ENVIAR/);
     expect(r3).toMatch(/TETO_POR_EXECUCAO/);
+  });
+});
+
+describe('dominioDe — domínio registrável', () => {
+  it('agrupa subdomínios pelo domínio raiz', () => {
+    // Cenário + Ação + Validação
+    expect(dominioDe('https://portal.gupy.io/job/123')).toBe('gupy.io');
+    expect(dominioDe('https://empresa.gupy.io/job/9')).toBe('gupy.io');
+    expect(dominioDe('https://www.vagas.com.br/vaga/1')).toBe('vagas.com.br');
+    expect(dominioDe('https://br.indeed.com/x')).toBe('indeed.com');
+    expect(dominioDe('https://linkedin.com/jobs')).toBe('linkedin.com');
+  });
+
+  it('retorna vazio para URL inválida', () => {
+    expect(dominioDe('nao-e-url')).toBe('');
+  });
+});
+
+describe('executor — abandono de portal bloqueado (P7)', () => {
+  it('abandona o portal inteiro e pula vagas seguintes do mesmo dominio', async () => {
+    // Cenário: dry-run (sem pausa)
+    const executar = criarExecutorDeTools(perfilFake(), configFake({ dryRun: true }));
+
+    // Ação: bloqueio na entrada da Gupy
+    const r1 = await executar('reportar_falha', {
+      url_vaga: 'https://portal.gupy.io/v1', codigo_falha: 'portal_bloqueado', descricao: 'Cloudflare na listagem',
+    });
+    // Outra vaga do MESMO portal, com falha qualquer
+    const r2 = await executar('reportar_falha', {
+      url_vaga: 'https://portal.gupy.io/v2', codigo_falha: 'timeout', descricao: 'qualquer',
+    });
+
+    // Validação: o portal é abandonado e a vaga seguinte do mesmo domínio é pulada
+    expect(r1).toMatch(/PULAR_PORTAL/);
+    expect(r2).toMatch(/PULAR_PORTAL/);
   });
 });
