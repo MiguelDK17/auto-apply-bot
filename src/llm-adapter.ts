@@ -27,6 +27,8 @@ export interface LLMResponse {
 
 export interface LLMProvider {
   readonly nome: string;
+  /** Identificador do modelo usado pelo token-tracker para precificar. */
+  readonly modeloPricing: string;
   generate(prompt: string): Promise<LLMResponse>;
 }
 
@@ -38,6 +40,10 @@ class GeminiProvider implements LLMProvider {
 
   constructor(private apiKey: string, private model: string) {
     this.ai = new GoogleGenAI({ apiKey });
+  }
+
+  get modeloPricing(): string {
+    return this.model;
   }
 
   async generate(prompt: string): Promise<LLMResponse> {
@@ -60,6 +66,8 @@ class GeminiProvider implements LLMProvider {
 
 class OllamaProvider implements LLMProvider {
   readonly nome = 'ollama';
+  // Ollama é local/grátis: precificação fixa em 'ollama' (custo zero).
+  readonly modeloPricing = 'ollama';
 
   constructor(private model: string, private baseUrl: string) {}
 
@@ -113,6 +121,10 @@ class OpenAICompatProvider implements LLMProvider {
     private apiKey: string,
     private baseUrl: string,
   ) {}
+
+  get modeloPricing(): string {
+    return this.model;
+  }
 
   async generate(prompt: string): Promise<LLMResponse> {
     const url = `${this.baseUrl}/chat/completions`;
@@ -230,7 +242,7 @@ export async function gerarTextoAux(prompt: string, contexto: string): Promise<L
   try {
     const response = await providerAux.generate(prompt);
     registrarUsoTokens(
-      `${providerAux.nome}:aux`,
+      providerAux.modeloPricing,
       response.usageMetadata,
       contexto,
     );
@@ -244,7 +256,7 @@ export async function gerarTextoAux(prompt: string, contexto: string): Promise<L
       log('INFO', `Tentando fallback: ${providerFallback.nome}...`);
       const response = await providerFallback.generate(prompt);
       registrarUsoTokens(
-        `${providerFallback.nome}:fallback`,
+        providerFallback.modeloPricing,
         response.usageMetadata,
         `${contexto}_fallback`,
       );

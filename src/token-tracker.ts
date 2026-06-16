@@ -34,6 +34,13 @@ const PRICING: Record<string, ModelPricing> = {
     outputPer1M: 0.40,
     cachedPer1M: 0.025,
   },
+  // Ollama roda localmente — custo zero. Antes caía no fallback (Gemini Pro) e
+  // o relatório mostrava custo fictício para quem escolheu o provider grátis.
+  ollama: {
+    inputPer1M: 0,
+    outputPer1M: 0,
+    cachedPer1M: 0,
+  },
 };
 
 // Fallback para modelos não listados (usa pricing do 2.5 pro)
