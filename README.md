@@ -17,7 +17,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 | Feature | Descrição |
 |---|---|
 | **AI Agent (Gemini)** | Usa Google Gemini como cérebro — entende vagas, preenche formulários, toma decisões |
-| **Playwright MCP** | Controla o Chrome real do usuário via CDP — sem logins, sem CAPTCHAs |
+| **Playwright MCP** | Controla o Chrome real do usuário via CDP — reaproveita a sessão já logada |
 | **Tailored Resume** | Gera currículo personalizado por vaga via IA — destaca skills relevantes, converte HTML→PDF |
 | **Cover Letter** | Gera carta de apresentação personalizada por vaga com validação anti-fabricação |
 | **Answer Cache** | Cacheia respostas de formulário no SQLite — economiza tokens e acelera execuções futuras |
@@ -33,7 +33,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 | **Email Reports** | Relatório HTML por email ao final de cada execução |
 | **File Logging** | Log completo de cada execução salvo em arquivo |
 | **Cron Scheduling** | Agende execuções automáticas diárias |
-| **Recovery** | Recupera o estado em caso de falha/interrupção |
+| **Recovery** | Detecta execução anterior interrompida e avisa o agente; o anti-duplicata (SQLite) evita refazer o trabalho já concluído |
 | **Sliding Window** | Gerencia contexto do Gemini descartando histórico antigo — evita estouro de tokens |
 | **Pre-defined Q&A** | Respostas base para perguntas comuns em formulários |
 | **Response Variation** | Varia respostas automaticamente para parecer humano |
@@ -98,6 +98,7 @@ npm install
 cp .env.example .env
 cp config/perfil.example.json config/perfil.json
 cp config/curriculos.example.json config/curriculos.json
+cp config/respostas.example.json config/respostas.json
 
 # Edite com seus dados
 nano .env                    # Chave do Gemini + configs
@@ -138,6 +139,8 @@ npm start
 | `CDP_ENDPOINT` | Endpoint CDP do Chrome | `http://localhost:9222` |
 | `GEMINI_MODEL` | Modelo do Gemini | `gemini-2.5-pro` |
 | `LIMITE_DIARIO` | Max candidaturas por execução | `10` |
+| `DELAY_MIN` | Delay mínimo entre ações (ms) | `2000` |
+| `DELAY_MAX` | Delay máximo entre ações (ms) | `5000` |
 | `SCORE_MINIMO` | Score mínimo para aplicar (1-10) | `6` |
 | `DRY_RUN` | Modo teste (não envia de verdade) | `true` |
 | `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
@@ -309,6 +312,8 @@ Adaptado do [beatwad](https://medium.com/@beatwad): antes de enviar dados ao LLM
 - System prompt do agente principal (PII de contato removido, disponível via tool sob demanda)
 
 **Dados profissionais** (stack, experiências, resumo) continuam visíveis no prompt — são necessários para gerar conteúdo relevante.
+
+> **Limitação importante (seja realista):** a anonimização cobre os **módulos auxiliares** (cover letter, currículo, mensagem ao recrutador). O **agente principal** recebe o nome real no system prompt e, ao preencher formulários, obtém email/telefone/links via a tool `obter_perfil_candidato` — ou seja, esses dados de contato chegam ao LLM principal (Gemini). Se quiser manter os módulos auxiliares 100% locais (sem enviar nada a provedores externos), use o provider **Ollama**.
 
 ---
 
