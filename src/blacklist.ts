@@ -18,11 +18,14 @@ function escaparRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Casa `termo` como palavra(s) inteira(s) dentro de `texto` (ambos normalizados). */
+/** Casa `termo` como palavra(s) inteira(s) dentro de `texto` (ambos normalizados).
+ *  Usa bordas condicionais (início/fim ou caractere não-alfanumérico) em vez de
+ *  \b, para também funcionar com termos que contêm símbolos (c++, .net, c#). */
 function contemPalavra(texto: string, termo: string): boolean {
   const t = normalizar(termo);
   if (!t) return false;
-  return new RegExp(`\\b${escaparRegex(t)}\\b`).test(normalizar(texto));
+  const re = new RegExp(`(^|[^a-z0-9])${escaparRegex(t)}([^a-z0-9]|$)`);
+  return re.test(normalizar(texto));
 }
 
 export interface ResultadoBlacklist {

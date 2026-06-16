@@ -44,6 +44,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function dominioDe(url: string): string {
   try {
     const host = new URL(url).hostname.toLowerCase();
+    // Endereço IP (v4/v6): a heurística de SLD não se aplica — retorna o host inteiro.
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(':')) return host;
     const p = host.split('.');
     if (p.length <= 2) return host;
     // Trata TLDs de 2 níveis (com.br, etc.): pega 3 rótulos quando o penúltimo é SLD.
