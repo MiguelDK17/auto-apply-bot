@@ -1,9 +1,10 @@
 import { GoogleGenAI, mcpToTool, type Content, type Part } from '@google/genai';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { customToolDeclarations, criarExecutorDeTools } from './tools.js';
+import { podarHistorico } from './historico.js';
 import { log } from './logger.js';
 import { classificarErroAPI, calcularBackoffRateLimit, MAX_TENTATIVAS } from './erros.js';
 import { registrarUsoTokens } from './token-tracker.js';
@@ -244,20 +245,27 @@ export async function executarAgente(
   log('AGENTE', `Limite diario: ${config.limiteDiario} candidaturas`);
   log('AGENTE', `Modelo: ${config.geminiModel}`);
 
-  // Historico de mensagens para manter contexto entre iteracoes
-  const history: Content[] = [];
+  // Historico de mensagens para manter contexto entre iteracoes.
+  // É `let` porque o sliding window (podarHistorico) substitui o array por uma
+  // versão podada e válida quando ele cresce demais.
+  let history: Content[] = [];
 
-  // Tentar restaurar estado de uma execucao anterior interrompida
+  // Tentar restaurar estado de uma execucao anterior interrompida.
+  // Não reidratamos o histórico bruto (snapshots antigos não ajudam e poderiam
+  // quebrar o pareamento de function calls); em vez disso, avisamos o agente de
+  // que houve interrupção. O dedup real vem do banco (vagas_vistas/candidaturas).
   const estadoRecuperado = carregarRecovery();
+  let avisoRecovery = '';
   if (estadoRecuperado) {
-    log('AGENTE', `Recuperando estado: ${estadoRecuperado.iteracao} iteracoes anteriores, ultimo site: ${estadoRecuperado.ultimoSite}`);
+    log('AGENTE', `Estado anterior encontrado: ${estadoRecuperado.iteracao} iteracao(oes), ultimo site: ${estadoRecuperado.ultimoSite}`);
+    avisoRecovery = `\n\nATENCAO: uma execucao anterior foi interrompida (ultimo site: ${estadoRecuperado.ultimoSite}). As vagas ja vistas/aplicadas estao registradas no banco e serao puladas — use verificar_vaga_ja_vista e verificar_ja_aplicou normalmente para continuar de onde parou.`;
   }
 
   // Mensagem inicial que dispara o agente
-  const mensagemInicial = `
+  const mensagemInicial = (`
 Inicie o processo de candidatura. Comece pelo primeiro site da lista.
 Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respostas.
-  `.trim();
+` + avisoRecovery).trim();
 
   history.push({ role: 'user', parts: [{ text: mensagemInicial }] });
 
@@ -309,59 +317,63 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
         break;
       }
 
-      // Processa function calls em paralelo (Promise.all)
-      // Quando o Gemini retorna múltiplas calls numa mesma resposta,
-      // ele já considera que são independentes entre si.
-      log('AGENTE', `Executando ${functionCalls.length} tool(s)${functionCalls.length > 1 ? ' em paralelo' : ''}...`);
+      // Processa as function calls SEQUENCIALMENTE.
+      // As tools do Playwright MCP (browser_*) operam no MESMO navegador/aba;
+      // executá-las em paralelo causaria race conditions (navegar enquanto digita,
+      // screenshot de página meio-carregada, elemento sumindo do DOM). A ordem
+      // também importa no preenchimento de formulários. O custo de serializar é
+      // desprezível perto do risco de estados intercalados.
+      log('AGENTE', `Executando ${functionCalls.length} tool(s) em sequencia...`);
 
-      const toolResults: Part[] = await Promise.all(
-        functionCalls.map(async (fc) => {
-          const toolName = fc.name ?? 'unknown';
-          const toolArgs = (fc.args ?? {}) as Record<string, unknown>;
-          log('TOOL', `${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...)`);
+      const toolResults: Part[] = [];
+      for (const fc of functionCalls) {
+        const toolName = fc.name ?? 'unknown';
+        const toolArgs = (fc.args ?? {}) as Record<string, unknown>;
+        log('TOOL', `${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...)`);
 
-          let resultado: string;
+        let resultado: string;
 
-          // Verifica se e uma tool customizada ou do MCP
+        // try/catch por tool: uma tool que lança NÃO derruba as demais nem o
+        // agente — vira um functionResponse de erro que o modelo consegue tratar.
+        try {
           if (customToolDeclarations.some(t => t.name === toolName)) {
             resultado = await executarTool(toolName, toolArgs);
           } else {
             // Tool do Playwright MCP — executa via mcpClient
-            try {
-              const mcpResult = await mcpClient.callTool({
-                name: toolName,
-                arguments: toolArgs,
-              });
+            const mcpResult = await mcpClient.callTool({
+              name: toolName,
+              arguments: toolArgs,
+            });
 
-              const content = mcpResult.content as Array<{ type: string; text?: string }> | undefined;
-              resultado = content
-                ?.map((c) => (c.type === 'text' ? c.text : JSON.stringify(c)))
-                .join('\n') || 'OK';
-            } catch (mcpError) {
-              resultado = `ERRO_MCP: ${mcpError instanceof Error ? mcpError.message : String(mcpError)}`;
-              log('ERRO', resultado);
-            }
+            const content = mcpResult.content as Array<{ type: string; text?: string }> | undefined;
+            resultado = content
+              ?.map((c) => (c.type === 'text' ? c.text : JSON.stringify(c)))
+              .join('\n') || 'OK';
           }
+        } catch (toolError) {
+          resultado = `ERRO_TOOL: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
+          log('ERRO', `Tool ${toolName} falhou: ${resultado}`);
+        }
 
-          log('TOOL', `Resultado: ${resultado.substring(0, 150)}...`);
+        log('TOOL', `Resultado: ${resultado.substring(0, 150)}...`);
 
-          return {
-            functionResponse: {
-              name: fc.name,
-              response: { result: resultado },
-            },
-          } as Part;
-        }),
-      );
+        toolResults.push({
+          functionResponse: {
+            name: fc.name,
+            response: { result: resultado },
+          },
+        } as Part);
+      }
 
       // Envia resultados das tools de volta ao modelo
       history.push({ role: 'user', parts: toolResults });
 
-      // Sliding window: descarta mensagens antigas se o histórico cresceu demais
+      // Sliding window: poda mensagens antigas preservando a validade do
+      // histórico para a API do Gemini (ver src/historico.ts).
       if (history.length > MAX_HISTORICO) {
-        const removidas = history.length - MAX_HISTORICO;
-        history.splice(0, removidas);
-        log('AGENTE', `Sliding window: ${removidas} mensagens antigas descartadas (historico: ${history.length})`);
+        const antes = history.length;
+        history = podarHistorico(history, MAX_HISTORICO);
+        log('AGENTE', `Sliding window: ${antes - history.length} mensagens antigas descartadas (historico: ${history.length})`);
       }
 
       // Salva estado para recovery a cada 5 iteracoes
@@ -444,9 +456,12 @@ function carregarRecovery(): RecoveryState | null {
 function limparRecovery(): void {
   try {
     if (existsSync(RECOVERY_PATH)) {
-      writeFileSync(RECOVERY_PATH, '');
+      // Remove o arquivo de fato. Antes era gravada uma string vazia, o que
+      // fazia carregarRecovery() sempre lançar em JSON.parse('') e nunca
+      // distinguir "sem recovery" de "recovery limpo".
+      unlinkSync(RECOVERY_PATH);
     }
   } catch {
-    // Silencioso
+    // Silencioso — não quebrar o fluxo por erro de limpeza.
   }
 }
