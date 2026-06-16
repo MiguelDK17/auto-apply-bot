@@ -28,6 +28,14 @@ describe('estaNaBlacklist', () => {
     expect(r.motivo).toMatch(/estagio|estágio/i);
   });
 
+  it('bloqueia termos que contêm símbolos (c++, .net)', () => {
+    // Cenário: termos técnicos com símbolo — \b não funcionaria aqui
+    expect(estaNaBlacklist('X', 'Vaga C++ Senior', [], ['c++']).bloqueado).toBe(true);
+    expect(estaNaBlacklist('X', 'Dev .NET Pleno', [], ['.net']).bloqueado).toBe(true);
+    // E não bloqueia o que não deve
+    expect(estaNaBlacklist('X', 'Dev Java', [], ['c++']).bloqueado).toBe(false);
+  });
+
   it('não bloqueia quando as listas estão vazias', () => {
     // Cenário + Ação + Validação
     expect(estaNaBlacklist('Qualquer', 'Qualquer Vaga', [], []).bloqueado).toBe(false);

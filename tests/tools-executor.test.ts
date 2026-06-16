@@ -115,6 +115,10 @@ describe('dominioDe — domínio registrável', () => {
   it('retorna vazio para URL inválida', () => {
     expect(dominioDe('nao-e-url')).toBe('');
   });
+
+  it('retorna o host inteiro para endereço IP (não fabrica TLD)', () => {
+    expect(dominioDe('http://192.168.0.1/x')).toBe('192.168.0.1');
+  });
 });
 
 describe('executor — abandono de portal bloqueado (P7)', () => {
