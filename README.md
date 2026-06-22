@@ -8,7 +8,11 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 
 ## ⚠️ Status do Projeto: Em Desenvolvimento
 
-> **Este projeto ainda não está funcionando corretamente.** A principal limitação atual são os **CAPTCHAs**: a maioria dos portais de vagas (Gupy, LinkedIn, etc.) utiliza sistemas anti-bot (Cloudflare, reCAPTCHA, hCaptcha) que bloqueiam a automação antes mesmo de chegar às vagas. O mecanismo de resolução via Telegram existe, mas não é suficiente para lidar com a frequência e variedade de CAPTCHAs encontrados na prática. O projeto está em desenvolvimento ativo e contribuições são bem-vindas para resolver essa e outras limitações.
+> **Este projeto ainda não funciona de ponta a ponta de forma totalmente autônoma.** O principal obstáculo são os **sistemas anti-bot** (Cloudflare, reCAPTCHA, Turnstile, hCaptcha) que portais como Gupy e LinkedIn usam para bloquear automação — muitas vezes já na página de busca, antes de chegar às vagas.
+>
+> O bot **não tenta "resolver" CAPTCHA automaticamente** (isso não é possível para reCAPTCHA/Turnstile, cujo token depende do contexto do navegador). Quando encontra um, ele te avisa no **Telegram** e **você resolve manualmente** no Chrome aberto, respondendo **OK** para continuar. O caminho com mais chance é o **LinkedIn Easy Apply** e formulários simples; portais com muro anti-bot logo na entrada continuam inviáveis.
+>
+> Mesmo com o CAPTCHA resolvido à mão, o fluxo completo (preencher e enviar candidaturas reais em cada portal) **ainda não foi validado de ponta a ponta**. Use sempre o modo `DRY_RUN=true` primeiro. Contribuições e testes são bem-vindos.
 
 ---
 
