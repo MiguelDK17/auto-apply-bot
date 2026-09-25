@@ -17,7 +17,8 @@ function perfilFake(): Perfil {
 
 function configFake(over: Partial<AgenteConfig> = {}): AgenteConfig {
   return {
-    geminiApiKey: 'fake', geminiModel: 'gemini-2.5-flash', cdpEndpoint: 'http://localhost:9222',
+    agentLlmBaseUrl: 'https://openrouter.ai/api/v1', agentLlmApiKey: 'fake', agentLlmModel: 'google/gemini-2.0-flash-001',
+    geminiApiKey: '', geminiModel: '', cdpEndpoint: 'http://localhost:9222',
     limiteDiario: 10, maxPorExecucao: 5, delayMin: 1, delayMax: 2, dryRun: true, scoreMinimo: 6,
     custoMaxUsd: 0, dashboardPort: 3000,
     telegramBotToken: '', telegramChatId: '', smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '',

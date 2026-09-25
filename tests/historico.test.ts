@@ -1,35 +1,45 @@
 import { describe, it, expect } from 'vitest';
-import type { Content } from '@google/genai';
-import { podarHistorico } from '../src/historico';
+import type OpenAI from 'openai';
+import { podarHistorico, type HistoricoChat } from '../src/historico';
 
-// Helpers que reproduzem o formato real do histórico do agente:
-// [user(texto), model(functionCall), user(functionResponse), model(...), user(...), ...]
-const userTexto = (t: string): Content => ({ role: 'user', parts: [{ text: t }] });
-const modelCall = (nome: string): Content => ({
-  role: 'model',
-  parts: [{ functionCall: { name: nome, args: {} } }],
+// Helpers que reproduzem o formato real do histórico do agente (OpenAI):
+// [system/user(texto), assistant(tool_calls), tool, tool, assistant(...), tool, ...]
+type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
+
+const userTexto = (t: string): Msg => ({ role: 'user', content: t });
+const assistantCall = (nome: string, id: string): Msg => ({
+  role: 'assistant',
+  content: null,
+  tool_calls: [
+    { id, type: 'function', function: { name: nome, arguments: '{}' } },
+  ],
 });
-const userResp = (nome: string): Content => ({
-  role: 'user',
-  parts: [{ functionResponse: { name: nome, response: { result: 'ok' } } }],
+const toolResp = (id: string): Msg => ({
+  role: 'tool',
+  tool_call_id: id,
+  content: 'ok',
 });
 
-function construirHistorico(rodadas: number): Content[] {
-  const history: Content[] = [userTexto('inicio')];
+function construirHistorico(rodadas: number): HistoricoChat {
+  const history: HistoricoChat = [{ role: 'system', content: 'prompt' }, userTexto('inicio')];
   for (let i = 0; i < rodadas; i++) {
-    history.push(modelCall(`t${i}`), userResp(`t${i}`));
+    history.push(assistantCall(`t${i}`, `call_${i}`), toolResp(`call_${i}`));
   }
   return history;
 }
 
-function temFunctionResponse(content: Content): boolean {
-  return (content.parts ?? []).some((p) => p.functionResponse !== undefined);
+function ehTool(msg: Msg): boolean {
+  return msg.role === 'tool';
 }
 
 describe('podarHistorico — sliding window', () => {
   it('não altera histórico menor ou igual ao máximo', () => {
     // Cenário: histórico pequeno (3 mensagens)
-    const history = [userTexto('inicio'), modelCall('a'), userResp('a')];
+    const history: HistoricoChat = [
+      { role: 'system', content: 'prompt' },
+      userTexto('inicio'),
+      assistantCall('a', 'call_a'),
+    ];
 
     // Ação
     const resultado = podarHistorico(history, 30);
@@ -39,63 +49,59 @@ describe('podarHistorico — sliding window', () => {
     expect(resultado).toEqual(history);
   });
 
-  it('preserva a mensagem inicial do usuário ao podar', () => {
-    // Cenário: 1 inicial + 20 rodadas = 41 mensagens (acima do máximo)
+  it('preserva a mensagem inicial ao podar', () => {
+    // Cenário: system + inicial + 20 rodadas = 42 mensagens (acima do máximo)
     const history = construirHistorico(20);
 
     // Ação
     const resultado = podarHistorico(history, 30);
 
-    // Validação: a primeira mensagem continua sendo a instrução inicial
-    expect(resultado[0]).toEqual(userTexto('inicio'));
+    // Validação: a primeira mensagem continua sendo o system prompt
+    expect(resultado[0]).toEqual({ role: 'system', content: 'prompt' });
     expect(resultado.length).toBeLessThanOrEqual(30);
   });
 
-  it('mantém o histórico válido: começa com user e o turno seguinte é model', () => {
+  it('mantém o histórico válido: o turno seguinte à inicial nunca é tool órfã', () => {
     // Cenário: histórico grande
     const history = construirHistorico(20);
 
     // Ação
     const resultado = podarHistorico(history, 30);
 
-    // Validação: começa com user (instrução inicial) e o 2º turno é um model íntegro
-    expect(resultado[0].role).toBe('user');
-    expect(resultado[1].role).toBe('model');
-    // o 2º turno NÃO pode ser um functionResponse órfão
-    expect(temFunctionResponse(resultado[1])).toBe(false);
+    // Validação: o 2º turno é assistant ou user — NUNCA tool órfã
+    expect(['assistant', 'user']).toContain(resultado[1].role);
+    expect(ehTool(resultado[1])).toBe(false);
   });
 
-  it('nunca deixa functionResponse órfão logo após a inicial, em vários tamanhos de corte', () => {
+  it('nunca deixa tool órfã logo após a inicial, em vários tamanhos de corte', () => {
     // Cenário: histórico grande
     const history = construirHistorico(25);
 
     // Ação + Validação para diferentes limites
     for (const max of [8, 10, 15, 21, 30]) {
       const resultado = podarHistorico(history, max);
-      // primeiro elemento é sempre a instrução inicial (texto)
-      expect(resultado[0].parts?.[0]).toHaveProperty('text');
-      // o elemento logo após a inicial nunca é um functionResponse órfão
+      // o elemento logo após a inicial nunca é uma resposta tool órfã
       if (resultado.length > 1) {
-        expect(temFunctionResponse(resultado[1])).toBe(false);
+        expect(ehTool(resultado[1])).toBe(false);
       }
     }
   });
 
-  it('cada functionResponse no resultado tem um functionCall anterior pareado', () => {
+  it('cada resposta tool no resultado tem um assistant com tool_calls antes', () => {
     // Cenário: histórico grande que será podado
     const history = construirHistorico(18);
 
     // Ação
     const resultado = podarHistorico(history, 20);
 
-    // Validação: varre o resultado garantindo que todo functionResponse (user)
-    // seja precedido por um turno model com functionCall
-    for (let i = 0; i < resultado.length; i++) {
-      if (temFunctionResponse(resultado[i])) {
-        expect(i).toBeGreaterThan(0);
-        const anterior = resultado[i - 1];
-        expect(anterior.role).toBe('model');
-        expect((anterior.parts ?? []).some((p) => p.functionCall !== undefined)).toBe(true);
+    // Validação: toda tool é precedida por um assistant com o tool_call_id pareado
+    const toolCallIds = new Set<string>();
+    for (const msg of resultado) {
+      if (msg.role === 'assistant' && msg.tool_calls) {
+        for (const tc of msg.tool_calls) toolCallIds.add(tc.id);
+      }
+      if (msg.role === 'tool') {
+        expect(toolCallIds.has(msg.tool_call_id)).toBe(true);
       }
     }
   });

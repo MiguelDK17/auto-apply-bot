@@ -63,6 +63,13 @@ export interface Candidatura {
 }
 
 export interface AgenteConfig {
+  // LLM do agente de navegação (agnóstico, padrão OpenAI SDK — funciona com
+  // OpenRouter, OpenAI nativa, Ollama ou qualquer endpoint OpenAI-compatible).
+  agentLlmBaseUrl: string;
+  agentLlmApiKey: string;
+  agentLlmModel: string;
+  // Chaves legadas do Gemini: mantidas como fallback opcional do LLM auxiliar
+  // (src/llm-adapter.ts). O agente de navegação NÃO usa mais estas chaves.
   geminiApiKey: string;
   geminiModel: string;
   cdpEndpoint: string;

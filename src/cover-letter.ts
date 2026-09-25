@@ -52,8 +52,6 @@ LEMBRETE: Se a vaga pedir tecnologia que o candidato NAO tem, NAO mencione. Foqu
 // ========== GERACAO ==========
 
 export async function gerarCoverLetter(
-  _geminiApiKey: string,
-  _geminiModel: string,
   perfil: Perfil,
   descricaoVaga: string,
   empresa: string,

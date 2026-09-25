@@ -77,8 +77,6 @@ LEMBRETE: Se a vaga pedir tecnologia que o candidato NAO tem, NAO mencione. Foqu
 // ========== GERACAO ==========
 
 export async function gerarMensagemRecrutador(
-  geminiApiKey: string,
-  geminiModel: string,
   perfil: Perfil,
   nomeRecrutador: string,
   cargoRecrutador: string,

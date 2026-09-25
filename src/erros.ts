@@ -38,6 +38,11 @@ export const FALHAS_RETRIAVEIS = new Set([
 
 export const MAX_TENTATIVAS = 3;
 
+// Teto de rate limits consecutivos no loop do agente: atingido o limite, o
+// agente PARA e avisa via Telegram em vez de esperar indefinidamente (30s,
+// 60s, 120s... sem fim) por uma cota que pode não voltar.
+export const MAX_RATE_LIMIT_CONSECUTIVOS = 5;
+
 export function ehFalhaPermanente(codigoFalha: string): boolean {
   return FALHAS_PERMANENTES.has(codigoFalha);
 }

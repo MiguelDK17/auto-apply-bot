@@ -159,8 +159,6 @@ LEMBRETE FINAL: Se a vaga pedir uma tecnologia que o candidato NAO tem, NAO a ad
 // ========== GERACAO DO CURRICULO ==========
 
 export async function gerarCurriculoTailored(
-  geminiApiKey: string,
-  geminiModel: string,
   perfil: Perfil,
   descricaoVaga: string,
 ): Promise<{ caminhoPDF: string; caminhoHTML: string; fonte: 'gerado' | 'cache' }> {

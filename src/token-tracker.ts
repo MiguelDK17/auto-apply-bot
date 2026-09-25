@@ -2,10 +2,12 @@
 // Adaptado do beatwad/AIHawk: registra input/output tokens de cada chamada,
 // calcula custo em USD e exibe resumo ao final da execução.
 //
-// A tabela de preços (PRICING, abaixo) cobre Gemini 2.5 Pro/Flash e 2.0 Flash;
+// A tabela de preços (PRICING, abaixo) cobre Gemini 2.5 Pro/Flash e 2.0 Flash,
+// modelos OpenAI/OpenRouter comuns no agente (gpt-4o-mini, DeepSeek, Llama via
+// OpenRouter) e o alias 'google/gemini-2.0-flash-001';
 // Ollama tem custo zero (roda localmente). Modelos não listados caem no
-// fallback do Gemini 2.5 Pro. Fonte dos preços Gemini:
-// https://ai.google.dev/gemini-api/docs/pricing
+// fallback do Gemini 2.5 Pro. Fontes: https://ai.google.dev/gemini-api/docs/pricing
+// e https://openrouter.ai/models (valores aproximados, variam por provedor).
 
 import { log } from './logger.js';
 
@@ -32,6 +34,33 @@ const PRICING: Record<string, ModelPricing> = {
     inputPer1M: 0.10,
     outputPer1M: 0.40,
     cachedPer1M: 0.025,
+  },
+  // Alias OpenRouter do Gemini Flash (AGENT_LLM_MODEL padrão)
+  'google/gemini-2.0-flash-001': {
+    inputPer1M: 0.10,
+    outputPer1M: 0.40,
+    cachedPer1M: 0.025,
+  },
+  // Modelos OpenAI-compatíveis comuns no agente (valores aproximados)
+  'gpt-4o-mini': {
+    inputPer1M: 0.15,
+    outputPer1M: 0.60,
+    cachedPer1M: 0.0375,
+  },
+  'gpt-4o': {
+    inputPer1M: 2.50,
+    outputPer1M: 10.00,
+    cachedPer1M: 1.25,
+  },
+  'deepseek/deepseek-chat': {
+    inputPer1M: 0.14,
+    outputPer1M: 0.28,
+    cachedPer1M: 0.035,
+  },
+  'meta-llama/llama-3.3-70b-instruct': {
+    inputPer1M: 0.12,
+    outputPer1M: 0.30,
+    cachedPer1M: 0.03,
   },
   // Ollama roda localmente — custo zero. Antes caía no fallback (Gemini Pro) e
   // o relatório mostrava custo fictício para quem escolheu o provider grátis.

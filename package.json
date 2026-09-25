@@ -10,14 +10,16 @@
     "chrome": "google-chrome --remote-debugging-port=9222",
     "test": "vitest",
     "test:run": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
   },
   "dependencies": {
     "@google/genai": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^11.0.0",
     "dotenv": "^16.4.0",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^7.0.13",
+    "openai": "^7.23.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",

@@ -29,15 +29,20 @@ function carregarConfig<T>(arquivo: string): T {
 }
 
 function validarEnv(): AgenteConfig {
-  const geminiApiKey = process.env.GEMINI_API_KEY;
-  if (!geminiApiKey) {
-    console.error('\nERRO: GEMINI_API_KEY nao definida.');
-    console.error('Copie .env.example para .env e preencha sua chave.\n');
+  // LLM do agente de navegação (agnóstico, padrão OpenAI SDK).
+  const agentLlmApiKey = process.env.AGENT_LLM_API_KEY || process.env.OPENAI_API_KEY;
+  if (!agentLlmApiKey) {
+    console.error('\nERRO: AGENT_LLM_API_KEY nao definida.');
+    console.error('Copie .env.example para .env e preencha sua chave (OpenRouter, OpenAI, etc.).\n');
     process.exit(1);
   }
 
   return {
-    geminiApiKey,
+    agentLlmBaseUrl: process.env.AGENT_LLM_BASE_URL || 'https://openrouter.ai/api/v1',
+    agentLlmApiKey,
+    agentLlmModel: process.env.AGENT_LLM_MODEL || 'google/gemini-2.0-flash-001',
+    // Legado (fallback opcional do LLM auxiliar — o agente NÃO usa mais).
+    geminiApiKey: process.env.GEMINI_API_KEY || '',
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     cdpEndpoint: process.env.CDP_ENDPOINT || 'http://127.0.0.1:9222',
     limiteDiario: parseInt(process.env.LIMITE_DIARIO || '10', 10),
@@ -187,7 +192,7 @@ async function main() {
 
   // Valida ambiente
   const config = validarEnv();
-  log('INFO', `Modelo: ${config.geminiModel}`);
+  log('INFO', `Modelo agente: ${config.agentLlmModel} (${config.agentLlmBaseUrl})`);
   log('INFO', `CDP: ${config.cdpEndpoint}`);
   log('INFO', `Limite diario: ${config.limiteDiario}`);
   log('INFO', `Score minimo: ${config.scoreMinimo}/10`);

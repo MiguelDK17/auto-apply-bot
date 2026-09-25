@@ -1,12 +1,13 @@
-import { GoogleGenAI, mcpToTool, type Content, type Part, type GenerateContentConfig } from '@google/genai';
+import OpenAI from 'openai';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { customToolDeclarations, criarExecutorDeTools } from './tools.js';
-import { podarHistorico } from './historico.js';
+import { customTools, ehToolCustomizada, criarExecutorDeTools } from './tools.js';
+import { podarHistorico, type HistoricoChat } from './historico.js';
 import { log } from './logger.js';
-import { classificarErroAPI, calcularBackoffRateLimit, MAX_TENTATIVAS } from './erros.js';
+import { classificarErroAPI, calcularBackoffRateLimit, MAX_TENTATIVAS, MAX_RATE_LIMIT_CONSECUTIVOS } from './erros.js';
+import { notificarErro } from './notificacoes.js';
 import { registrarUsoTokens, obterCustoTotal } from './token-tracker.js';
 import { perfilParaSystemPrompt } from './anonimizacao.js';
 import type { AgenteConfig, Perfil, SitesConfig } from './types.js';
@@ -99,6 +100,20 @@ Antes de se candidatar a QUALQUER vaga, SEMPRE use a tool "pontuar_vaga" passand
 - Se um formulario pedir informacao que voce NAO tem no perfil: pule o campo ou use "A combinar"
 - NUNCA insira dados falsos ou inventados
 - Aguarde SEMPRE entre acoes (tool aguardar) para simular comportamento humano
+
+## TOLERANCIA A ERROS DE SELETOR (ANTI-LOOP — LEIA COM ATENCAO)
+Erros de seletor/elemento ("ERRO_TOOL", "selector", "locator", "element not found",
+"strict mode violation", "not visible", "not attached") significam que a pagina mudou
+ou a referencia expirou. Regras duras:
+- NUNCA repita a mesma chamada com os mesmos argumentos apos um erro de seletor.
+- Ordem de reacao: (1) use browser_snapshot para REVER a pagina e obter referencias
+  atualizadas; (2) tente uma estrategia diferente (outro ref/seletor, scroll antes,
+  aguardar o carregamento); (3) se falhar 2x no MESMO elemento, DESISTA dele —
+  use reportar_falha (codigo "elemento_nao_encontrado") e avance para a proxima
+  vaga/acao. Ficar retentando o mesmo elemento queima a cota de requisicoes sem
+  nenhum progresso e pode travar a execucao inteira.
+- Se varios elementos da mesma pagina falharem em sequencia, a pagina provavelmente
+  nao carregou: use browser_navigate para recarregar ou volte para a listagem.
 
 ## Regras de Screenshot (IMPORTANTE)
 - APOS cada candidatura (enviada ou simulada no dry-run), use browser_take_screenshot para capturar a tela.
@@ -222,32 +237,110 @@ Quando terminar todos os sites ou atingir o limite diario, faca um resumo:
 `;
 }
 
+// ========== CLIENT OPENAI (agnóstico a provedor) ==========
+
 /**
- * Monta o `config` da chamada `generateContent`.
+ * Cria o client do LLM de navegação no padrão OpenAI SDK.
  *
- * O agente despacha as function calls MANUALMENTE (ver loop em executarAgente),
- * então o automatic function calling (AFC) do SDK precisa ficar DESLIGADO. Com o
- * AFC ligado — o padrão quando há um objeto MCP na lista de tools — o
- * @google/genai recusa misturar o objeto MCP (CallableTool) com
- * functionDeclarations básicas no mesmo array `tools`, lançando "Automatic
- * function calling with CallableTools (or MCP objects) and basic
- * FunctionDeclarations is not yet supported. Incompatible tools found at
- * tools[1]". Desligar o AFC faz o SDK apenas EXPOR as declarações ao modelo
- * (inclusive as do MCP, convertidas por mcpToTool) e devolver os functionCalls
- * para o nosso loop despachar — que é o comportamento desejado.
+ * Funciona com qualquer endpoint OpenAI-compatible — basta configurar:
+ * - `AGENT_LLM_BASE_URL` (ex: https://openrouter.ai/api/v1, https://api.openai.com/v1, http://localhost:11434/v1)
+ * - `AGENT_LLM_API_KEY` (chave do provedor; Ollama local aceita qualquer valor)
+ * - `AGENT_LLM_MODEL` (ex: google/gemini-2.0-flash-001, gpt-4o-mini, llama3.1)
  */
-export function construirConfigGeracao(
-  mcpClient: Client,
-  systemPrompt: string,
-): GenerateContentConfig {
+export function criarClientAgente(config: AgenteConfig): OpenAI {
+  const baseURL = config.agentLlmBaseUrl || 'https://openrouter.ai/api/v1';
+  // OpenRouter recomenda identificar o app — inofensivo para outros provedores.
+  const defaultHeaders = baseURL.includes('openrouter.ai')
+    ? { 'HTTP-Referer': 'https://github.com/auto-apply-bot', 'X-Title': 'auto-apply-bot' }
+    : undefined;
+  return new OpenAI({
+    baseURL,
+    apiKey: config.agentLlmApiKey,
+    ...(defaultHeaders ? { defaultHeaders } : {}),
+  });
+}
+
+// ========== CONVERSÃO DE TOOLS MCP → OPENAI ==========
+
+/** Formato mínimo esperado de uma tool listada via MCP. */
+export interface McpToolInfo {
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+}
+
+/**
+ * Converte uma tool do Playwright MCP para `ChatCompletionTool` do OpenAI.
+ * O `inputSchema` do MCP já é JSON Schema — é repassado intacto como
+ * `parameters`, preservando o payload/contrato original da tool.
+ */
+export function converterMcpToolParaOpenAI(
+  tool: McpToolInfo,
+): OpenAI.Chat.Completions.ChatCompletionTool {
+  const parameters =
+    tool.inputSchema && typeof tool.inputSchema === 'object'
+      ? (tool.inputSchema as Record<string, unknown>)
+      : { type: 'object', properties: {} };
   return {
-    systemInstruction: systemPrompt,
-    automaticFunctionCalling: { disable: true },
-    tools: [
-      mcpToTool(mcpClient),
-      { functionDeclarations: customToolDeclarations },
-    ],
+    type: 'function',
+    function: {
+      name: tool.name,
+      description: tool.description ?? '',
+      parameters,
+    },
   };
+}
+
+/**
+ * Monta o array completo de `tools` no padrão oficial OpenAI
+ * (`{ type: "function", ... }`): tools do navegador (MCP) + tools
+ * customizadas do bot. É este array que vai em
+ * `openai.chat.completions.create({ tools })`.
+ */
+export function montarToolsAgente(
+  mcpTools: McpToolInfo[],
+): OpenAI.Chat.Completions.ChatCompletionTool[] {
+  return [...mcpTools.map(converterMcpToolParaOpenAI), ...customTools];
+}
+
+// ========== RESILIÊNCIA A ERROS DE SELETOR ==========
+
+const PADRAO_ERRO_SELETOR =
+  /selector|seletor|locator|strict mode|element.{0,30}not found|no.{0,20}element found|elemento n[aã]o encontrado|invalid selector|not attached|not visible|outside of the viewport/i;
+
+/**
+ * Detecta se o resultado de uma tool indica falha de seletor/CSS ou elemento
+ * não encontrado — o caso que mais causava loops infinitos de retentativa
+ * (queimando a cota diária em minutos). Usado para anexar orientação de
+ * recuperação ao resultado reinjetado no histórico.
+ */
+export function ehErroDeSeletor(texto: string): boolean {
+  return PADRAO_ERRO_SELETOR.test(texto);
+}
+
+/**
+ * Extrai texto do retorno bruto de `mcpClient.callTool`, preservando o
+ * payload intacto: partes `text` são concatenadas; partes não-texto viram
+ * JSON. Retorna 'OK' quando não há conteúdo.
+ */
+export function extrairTextoMcp(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return (
+      content
+        .map((c) => {
+          if (typeof c === 'string') return c;
+          if (c && typeof c === 'object' && 'type' in c) {
+            const part = c as { type: string; text?: unknown };
+            if (part.type === 'text' && part.text !== undefined) return String(part.text);
+          }
+          return JSON.stringify(c);
+        })
+        .join('\n') || 'OK'
+    );
+  }
+  if (content === null || content === undefined) return 'OK';
+  return JSON.stringify(content);
 }
 
 export async function executarAgente(
@@ -256,7 +349,7 @@ export async function executarAgente(
   sites: SitesConfig,
   config: AgenteConfig,
 ): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey: config.geminiApiKey });
+  const client = criarClientAgente(config);
   const executarTool = criarExecutorDeTools(perfil, config);
   const systemPrompt = buildSystemPrompt(perfil, sites, config);
 
@@ -267,16 +360,24 @@ export async function executarAgente(
 
   log('AGENTE', `Iniciando com ${sitesAtivos.length} site(s) ativo(s)`);
   log('AGENTE', `Limite diario: ${config.limiteDiario} candidaturas`);
-  log('AGENTE', `Modelo: ${config.geminiModel}`);
+  log('AGENTE', `LLM: ${config.agentLlmModel} via ${config.agentLlmBaseUrl}`);
+
+  // Descobre as tools do Playwright MCP UMA vez e converte para o padrão
+  // OpenAI — o loop abaixo só despacha tool_calls contra este array.
+  const { tools: mcpTools } = await mcpClient.listTools();
+  const tools = montarToolsAgente(mcpTools as McpToolInfo[]);
+  log('AGENTE', `${mcpTools.length} tool(s) MCP + ${customTools.length} customizada(s)`);
 
   // Historico de mensagens para manter contexto entre iteracoes.
   // É `let` porque o sliding window (podarHistorico) substitui o array por uma
   // versão podada e válida quando ele cresce demais.
-  let history: Content[] = [];
+  let history: HistoricoChat = [
+    { role: 'system', content: systemPrompt },
+  ];
 
   // Tentar restaurar estado de uma execucao anterior interrompida.
   // Não reidratamos o histórico bruto (snapshots antigos não ajudam e poderiam
-  // quebrar o pareamento de function calls); em vez disso, avisamos o agente de
+  // quebrar o pareamento de tool calls); em vez disso, avisamos o agente de
   // que houve interrupção. O dedup real vem do banco (vagas_vistas/candidaturas).
   const estadoRecuperado = carregarRecovery();
   let avisoRecovery = '';
@@ -291,7 +392,11 @@ Inicie o processo de candidatura. Comece pelo primeiro site da lista.
 Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respostas.
 ` + avisoRecovery).trim();
 
-  history.push({ role: 'user', parts: [{ text: mensagemInicial }] });
+  history.push({ role: 'user', content: mensagemInicial });
+
+  // Assinatura (tool+args) → nº de falhas de seletor consecutivas. Evita que o
+  // modelo queime a cota retentando o mesmo elemento indefinidamente.
+  const falhasSeletor = new Map<string, number>();
 
   let iteracao = 0;
   let respostaFinal = '';
@@ -303,17 +408,29 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
     log('AGENTE', `Iteracao ${iteracao}/${MAX_ITERACOES}`);
 
     try {
-      const response = await ai.models.generateContent({
-        model: config.geminiModel,
-        contents: history,
-        config: construirConfigGeracao(mcpClient, systemPrompt),
+      const completion = await client.chat.completions.create({
+        model: config.agentLlmModel,
+        messages: history,
+        tools,
+        tool_choice: 'auto',
       });
 
       // Reset do contador — iteração bem sucedida
       errosConsecutivos = 0;
 
-      // Registra uso de tokens desta chamada
-      registrarUsoTokens(config.geminiModel, response.usageMetadata, 'agente');
+      // Registra uso de tokens desta chamada (usage OpenAI → formato interno)
+      const usage = completion.usage;
+      if (usage) {
+        registrarUsoTokens(
+          config.agentLlmModel,
+          {
+            promptTokenCount: usage.prompt_tokens,
+            candidatesTokenCount: usage.completion_tokens,
+            totalTokenCount: usage.total_tokens,
+          },
+          'agente',
+        );
+      }
 
       // Circuito de parada por custo: limite economico complementar ao
       // MAX_ITERACOES (so ativo se CUSTO_MAX_USD > 0). Evita queimar dezenas de
@@ -324,47 +441,64 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
         break;
       }
 
-      const candidate = response.candidates?.[0];
-      if (!candidate?.content) {
+      const message = completion.choices[0]?.message;
+      if (!message) {
         log('AGENTE', 'Resposta vazia do modelo. Finalizando.');
         break;
       }
 
-      // Adiciona resposta do modelo ao historico
-      history.push(candidate.content);
+      // Adiciona resposta do modelo ao historico (preservando tool_calls)
+      history.push({
+        role: 'assistant',
+        content: message.content,
+        ...(message.tool_calls && message.tool_calls.length > 0
+          ? { tool_calls: message.tool_calls }
+          : {}),
+      } as OpenAI.Chat.Completions.ChatCompletionMessageParam);
 
-      // Verifica se tem function calls
-      const functionCalls = response.functionCalls;
+      // Verifica se tem tool calls — resposta só-texto NÃO trava a máquina de
+      // estados: encerra normalmente como resposta final do modelo.
+      // (Filtra por type === 'function': o SDK também tipa custom tool calls.)
+      const toolCalls = (message.tool_calls ?? []).filter(
+        (
+          tc,
+        ): tc is OpenAI.Chat.Completions.ChatCompletionMessageFunctionToolCall =>
+          tc.type === 'function',
+      );
 
-      if (!functionCalls || functionCalls.length === 0) {
+      if (!toolCalls || toolCalls.length === 0) {
         // Sem tool calls = modelo terminou com texto
-        const textoFinal = response.text || '';
+        const textoFinal = message.content || '';
         log('AGENTE', `Resposta final do modelo:\n${textoFinal}`);
         respostaFinal = textoFinal;
         limparRecovery();
         break;
       }
 
-      // Processa as function calls SEQUENCIALMENTE.
+      // Processa as tool calls SEQUENCIALMENTE.
       // As tools do Playwright MCP (browser_*) operam no MESMO navegador/aba;
       // executá-las em paralelo causaria race conditions (navegar enquanto digita,
       // screenshot de página meio-carregada, elemento sumindo do DOM). A ordem
       // também importa no preenchimento de formulários. O custo de serializar é
       // desprezível perto do risco de estados intercalados.
-      log('AGENTE', `Executando ${functionCalls.length} tool(s) em sequencia...`);
+      log('AGENTE', `Executando ${toolCalls.length} tool(s) em sequencia...`);
 
-      const toolResults: Part[] = [];
-      for (const fc of functionCalls) {
-        const toolName = fc.name ?? 'unknown';
-        const toolArgs = (fc.args ?? {}) as Record<string, unknown>;
+      for (const tc of toolCalls) {
+        const toolName = tc.function.name ?? 'unknown';
+        let toolArgs: Record<string, unknown> = {};
+        try {
+          toolArgs = JSON.parse(tc.function.arguments || '{}') as Record<string, unknown>;
+        } catch {
+          log('ERRO', `Argumentos invalidos para ${toolName}: ${(tc.function.arguments || '').substring(0, 100)}`);
+        }
         log('TOOL', `${toolName}(${JSON.stringify(toolArgs).substring(0, 100)}...)`);
 
         let resultado: string;
 
         // try/catch por tool: uma tool que lança NÃO derruba as demais nem o
-        // agente — vira um functionResponse de erro que o modelo consegue tratar.
+        // agente — vira um resultado de erro que o modelo consegue tratar.
         try {
-          if (customToolDeclarations.some(t => t.name === toolName)) {
+          if (ehToolCustomizada(toolName)) {
             resultado = await executarTool(toolName, toolArgs);
           } else {
             // Tool do Playwright MCP — executa via mcpClient
@@ -373,10 +507,8 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
               arguments: toolArgs,
             });
 
-            const content = mcpResult.content as Array<{ type: string; text?: string }> | undefined;
-            resultado = content
-              ?.map((c) => (c.type === 'text' ? c.text : JSON.stringify(c)))
-              .join('\n') || 'OK';
+            const content = (mcpResult as { content?: unknown }).content;
+            resultado = extrairTextoMcp(content);
           }
         } catch (toolError) {
           resultado = `ERRO_TOOL: ${toolError instanceof Error ? toolError.message : String(toolError)}`;
@@ -385,19 +517,35 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
 
         log('TOOL', `Resultado: ${resultado.substring(0, 150)}...`);
 
-        toolResults.push({
-          functionResponse: {
-            name: fc.name,
-            response: { result: resultado },
-          },
-        } as Part);
+        // Resiliência a seletores: se a tool falhou por seletor/elemento não
+        // encontrado, anexa orientação explícita ao resultado para o modelo NÃO
+        // retentar o mesmo elemento — e escala o aviso a cada repetição.
+        if (ehErroDeSeletor(resultado)) {
+          const assinatura = `${toolName}:${JSON.stringify(toolArgs).substring(0, 120)}`;
+          const repeticoes = (falhasSeletor.get(assinatura) || 0) + 1;
+          falhasSeletor.set(assinatura, repeticoes);
+          resultado +=
+            `\n\nAVISO_DO_SISTEMA: esta acao falhou por seletor/elemento nao encontrado (${repeticoes}x). ` +
+            `NAO repita a mesma chamada. Use browser_snapshot para obter referencias atualizadas e tente outra estrategia. ` +
+            `Se falhar de novo, use reportar_falha (codigo "elemento_nao_encontrado") e avance para a proxima vaga.`;
+          if (repeticoes >= 3) {
+            resultado +=
+              ` ATENCAO: ${repeticoes} falhas identicas — DESISTA deste elemento agora ` +
+              `(reportar_falha + proxima vaga). Continuar retentando queima a cota de requisicoes sem progresso.`;
+          }
+        }
+
+        // Reinjeta o retorno no histórico no padrão OpenAI
+        // ({ role: "tool", tool_call_id, content })
+        history.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: resultado,
+        });
       }
 
-      // Envia resultados das tools de volta ao modelo
-      history.push({ role: 'user', parts: toolResults });
-
       // Sliding window: poda mensagens antigas preservando a validade do
-      // histórico para a API do Gemini (ver src/historico.ts).
+      // histórico para a API OpenAI (ver src/historico.ts).
       if (history.length > MAX_HISTORICO) {
         const antes = history.length;
         history = podarHistorico(history, MAX_HISTORICO);
@@ -417,6 +565,18 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
 
       if (tipoErro === 'rate_limit') {
         errosConsecutivos++;
+        // Teto anti-espera-infinita: após N rate limits seguidos, a cota
+        // provavelmente não vai voltar tão cedo — avisa no Telegram e PARA,
+        // em vez de acumular backoffs (30s, 60s, 120s...) indefinidamente.
+        if (errosConsecutivos >= MAX_RATE_LIMIT_CONSECUTIVOS) {
+          const msg = `Rate limit persistente no LLM do agente (${errosConsecutivos}x consecutivos, modelo ${config.agentLlmModel}). Execucao interrompida na iteracao ${iteracao} para preservar a cota. Verifique o plano/limites do provedor e rode novamente — o progresso foi salvo (vagas vistas/aplicadas estao no banco).`;
+          log('AGENTE', msg);
+          salvarRecovery(iteracao, sitesAtivos.map(s => s.nome));
+          respostaFinal = `Erro durante execucao: ${msg}`;
+          saiuComErroFatal = true;
+          await notificarErro(`Job Bot parado: rate limit persistente (${errosConsecutivos}x) no modelo ${config.agentLlmModel}. ${respostaFinal}`);
+          break;
+        }
         const backoff = calcularBackoffRateLimit(errosConsecutivos);
         log('AGENTE', `Rate limit atingido (${errosConsecutivos}x). Aguardando ${Math.round(backoff / 1000)}s...`);
         await new Promise(resolve => setTimeout(resolve, backoff));

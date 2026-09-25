@@ -5,7 +5,9 @@
 // SDK nativo para Gemini.
 //
 // Arquitetura:
-// - Agente principal: sempre Gemini (precisa de tool calling + MCP)
+// - Agente principal (navegação): SDK OpenAI agnóstico (src/agente.ts), via
+//   AGENT_LLM_BASE_URL / AGENT_LLM_API_KEY / AGENT_LLM_MODEL — pode ser um
+//   provedor totalmente diferente do auxiliar.
 // - Módulos auxiliares (cover letter, currículo, mensagem): usam o provider
 //   configurado em LLM_AUX_PROVIDER (pode ser Ollama = custo zero)
 //

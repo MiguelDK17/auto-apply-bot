@@ -1,4 +1,4 @@
-import { Type, type FunctionDeclaration } from '@google/genai';
+import type OpenAI from 'openai';
 import { readFileSync, mkdirSync, existsSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -73,15 +73,28 @@ function carregarCurriculos(): CurriculosConfig {
   return JSON.parse(readFileSync(caminho, 'utf-8'));
 }
 
-// ========== DEFINICAO DAS TOOLS ==========
+// ========== DEFINICAO DAS TOOLS (padrão OpenAI Function Calling) ==========
+// As definições abaixo usam JSON Schema puro — agnósticas a provedor. Qualquer
+// SDK compatível com a API OpenAI (OpenAI, OpenRouter, Ollama, vLLM, etc.)
+// aceita este formato via `tools: [{ type: "function", function: {...} }]`.
 
-export const customToolDeclarations: FunctionDeclaration[] = [
+interface CustomToolDef {
+  name: string;
+  description: string;
+  parameters: {
+    type: 'object';
+    properties: Record<string, unknown>;
+    required?: string[];
+  };
+}
+
+const customToolDefs: CustomToolDef[] = [
   {
     name: 'obter_perfil_candidato',
     description:
       'Retorna todos os dados pessoais e profissionais do candidato para preencher formularios e gerar respostas personalizadas.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {},
     },
   },
@@ -90,10 +103,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Verifica no banco de dados se o candidato ja se candidatou a uma vaga especifica pela URL. Retorna verdadeiro ou falso.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL completa da vaga para verificar',
         },
       },
@@ -105,30 +118,30 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Registra no banco de dados que uma candidatura foi realizada com sucesso. Chamar APOS preencher e enviar o formulario.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         plataforma: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da plataforma (ex: Gupy, LinkedIn, Vagas.com)',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
         url: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga',
         },
         mensagem_enviada: {
-          type: Type.BOOLEAN,
+          type: "boolean",
           description: 'Se uma mensagem personalizada foi enviada ao recrutador',
         },
         score: {
-          type: Type.NUMBER,
+          type: "number",
           description: 'Score da vaga (1-10) calculado por pontuar_vaga. Inclua sempre — alimenta o dashboard e as estatisticas.',
         },
       },
@@ -140,14 +153,14 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'OBRIGATORIA antes de QUALQUER clique de envio final: botao "Candidatar-se"/"Quero me candidatar"/"Enviar"/"Submeter"/"Finalizar", ou envio de convite/mensagem ao recrutador. Chame esta tool IMEDIATAMENTE antes do clique terminal. Em modo dry-run o sistema BLOQUEIA o envio (nao clique; registre como dry-run e siga). Em producao o sistema libera o clique. E a trava de seguranca que protege o usuario de envios indevidos.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga/pagina onde o envio ocorreria',
         },
         acao: {
-          type: Type.STRING,
+          type: "string",
           description: 'O que sera enviado (ex: "candidatura", "mensagem ao recrutador")',
         },
       },
@@ -159,7 +172,7 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Retorna quantas candidaturas ja foram feitas hoje. Use para verificar se atingiu o limite diario.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {},
     },
   },
@@ -168,10 +181,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Lista as ultimas candidaturas feitas para referencia e evitar duplicatas.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         limite: {
-          type: Type.NUMBER,
+          type: "number",
           description: 'Quantidade de candidaturas para retornar (padrao: 20)',
         },
       },
@@ -182,34 +195,34 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Avalia o quanto uma vaga combina com o perfil do candidato (score de 1 a 10). SEMPRE use ANTES de decidir se vai aplicar. Se o score for menor que o minimo configurado, PULE a vaga.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
         tecnologias_pedidas: {
-          type: Type.STRING,
+          type: "string",
           description: 'Lista de tecnologias/requisitos que a vaga pede',
         },
         senioridade: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nivel de senioridade pedido (junior, pleno, senior, etc.)',
         },
         modelo_trabalho: {
-          type: Type.STRING,
+          type: "string",
           description: 'Modelo de trabalho (remoto, hibrido, presencial)',
         },
         localizacao: {
-          type: Type.STRING,
+          type: "string",
           description: 'Cidade/estado da vaga',
         },
         idioma_exigido: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nivel de ingles que a vaga EXIGE, se mencionado na descricao: nenhum, basico, intermediario, avancado ou fluente. Deixe vazio se a vaga nao exige ingles.',
         },
       },
@@ -221,10 +234,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Escolhe o curriculo mais adequado para a vaga com base na descricao. Retorna o caminho do PDF correto para upload. SEMPRE use esta tool ANTES de fazer upload de curriculo.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         descricao_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Resumo da descricao da vaga (tecnologias pedidas, tipo de cargo, area de atuacao)',
         },
       },
@@ -236,14 +249,14 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Aguarda um tempo aleatorio entre acoes para simular comportamento humano. SEMPRE use entre acoes de navegacao.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         min_ms: {
-          type: Type.NUMBER,
+          type: "number",
           description: 'Tempo minimo em milissegundos (padrao: 2000)',
         },
         max_ms: {
-          type: Type.NUMBER,
+          type: "number",
           description: 'Tempo maximo em milissegundos (padrao: 5000)',
         },
       },
@@ -254,18 +267,18 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Salva o screenshot atual da pagina como prova da candidatura. Use APOS submeter (ou simular no dry-run) a candidatura. Passe os dados base64 do screenshot obtido via browser_take_screenshot.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga para associar o screenshot',
         },
         screenshot_base64: {
-          type: Type.STRING,
+          type: "string",
           description: 'Dados base64 do screenshot (obtido via browser_take_screenshot)',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa (para nomear o arquivo)',
         },
       },
@@ -277,10 +290,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Verifica se uma vaga ja foi vista/analisada anteriormente (mesmo que nao tenha sido aplicada). Evita perder tempo reanalisando vagas ja descartadas. Use ANTES de analisar uma vaga em detalhe.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga para verificar',
         },
       },
@@ -292,30 +305,30 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Registra que uma vaga foi vista/analisada. Use para vagas que foram PULADAS (score baixo, localizacao errada, etc.) para nao reanalisar no futuro.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
         plataforma: {
-          type: Type.STRING,
+          type: "string",
           description: 'Plataforma (Gupy, Vagas.com, etc.)',
         },
         score: {
-          type: Type.NUMBER,
+          type: "number",
           description: 'Score calculado da vaga',
         },
         motivo_pulo: {
-          type: Type.STRING,
+          type: "string",
           description: 'Motivo pelo qual a vaga foi pulada',
         },
       },
@@ -327,7 +340,7 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Retorna as respostas pre-definidas do candidato para perguntas comuns em formularios (pretensao salarial, disponibilidade, pontos fortes, etc.). Use como BASE para variar as respostas.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {},
     },
   },
@@ -336,18 +349,18 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Gera um curriculo PDF personalizado para a vaga especifica. O curriculo e reescrito por IA para destacar as skills relevantes para ESTA vaga, mantendo APENAS dados reais do candidato. Use ANTES de fazer upload do curriculo. Se falhar, faca fallback para escolher_curriculo.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         descricao_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Descricao COMPLETA da vaga (copie o maximo de detalhes: requisitos, responsabilidades, tecnologias, senioridade)',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga (ex: Desenvolvedor Backend Java)',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
       },
@@ -359,18 +372,18 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Gera uma carta de apresentacao personalizada para a vaga. Retorna texto pronto para colar no campo do formulario. Use quando o formulario pedir "carta de apresentacao", "cover letter", "por que voce quer trabalhar aqui" (campo longo), ou "apresente-se".',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         descricao_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Descricao da vaga (requisitos, responsabilidades)',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
       },
@@ -382,14 +395,14 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Busca no cache se essa pergunta de formulario ja foi respondida antes. Use ANTES de gerar uma resposta nova. Se retornar um cache hit, use a resposta cacheada (pode variar levemente a forma). Economiza tokens e garante consistencia.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         pergunta: {
-          type: Type.STRING,
+          type: "string",
           description: 'Texto da pergunta/label do campo do formulario',
         },
         tipo_campo: {
-          type: Type.STRING,
+          type: "string",
           description: 'Tipo do campo: textbox, numeric, dropdown, radio, date, textarea',
         },
       },
@@ -401,22 +414,22 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Salva uma resposta no cache para reutilizar em formularios futuros. Use APOS preencher um campo com uma resposta gerada. NAO salve: cover letters, respostas que mencionam o nome da empresa, ou campos de data especificos.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         pergunta: {
-          type: Type.STRING,
+          type: "string",
           description: 'Texto da pergunta/label do campo',
         },
         tipo_campo: {
-          type: Type.STRING,
+          type: "string",
           description: 'Tipo do campo: textbox, numeric, dropdown, radio, date, textarea',
         },
         resposta: {
-          type: Type.STRING,
+          type: "string",
           description: 'Resposta que foi usada no campo',
         },
         empresa_atual: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa da vaga atual (para validar se a resposta e generica o suficiente para cachear)',
         },
       },
@@ -428,30 +441,30 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Reporta uma falha encontrada durante o processo de candidatura. Classifica automaticamente como PERMANENTE (nunca retentar) ou RETRIAVEL (tentar novamente). Use quando encontrar erros como: vaga expirada, CAPTCHA, timeout, erro de rede, formulario incompativel, etc. Codigos permanentes: vaga_expirada, captcha, sessao_expirada, localizacao_inelegivel, ja_aplicou, conta_necessaria, nao_e_vaga, sso_obrigatorio, site_bloqueado, cloudflare, portal_bloqueado (bloqueio na pagina de busca — abandona o portal inteiro), formulario_incompativel, vaga_interna, idioma_incompativel. Codigos retriaveis: timeout, erro_rede, pagina_nao_carregou, erro_servidor, elemento_nao_encontrado, erro_upload, erro_mcp.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga onde ocorreu a falha',
         },
         codigo_falha: {
-          type: Type.STRING,
+          type: "string",
           description: 'Codigo da falha (ex: vaga_expirada, captcha, timeout, erro_rede)',
         },
         descricao: {
-          type: Type.STRING,
+          type: "string",
           description: 'Descricao livre do que aconteceu',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga (se disponivel)',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa (se disponivel)',
         },
         plataforma: {
-          type: Type.STRING,
+          type: "string",
           description: 'Plataforma (Gupy, Vagas.com, etc.)',
         },
       },
@@ -463,14 +476,14 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Envia screenshot de um CAPTCHA/desafio anti-bot para o Telegram e pede que o usuario o resolva MANUALMENTE no Chrome aberto, respondendo OK ou PULAR. Retorna status RESOLVIDO / PULAR / TIMEOUT (NAO retorna texto para digitar — reCAPTCHA/Turnstile nao funcionam por digitacao). Apos RESOLVIDO, reverifique a pagina com browser_snapshot. REQUER: Telegram configurado (.env). Timeout: 5 minutos.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         screenshot_base64: {
-          type: Type.STRING,
+          type: "string",
           description: 'Screenshot do CAPTCHA em base64 (obtido via browser_take_screenshot)',
         },
         url_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da pagina onde o CAPTCHA apareceu',
         },
       },
@@ -482,26 +495,26 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Gera uma mensagem personalizada para enviar ao recrutador/hiring manager da vaga via LinkedIn. A mensagem tem no maximo 280 caracteres (nota de conexao). Use SOMENTE quando: (1) a vaga tem score alto (>= 8), (2) voce identificou o recrutador na pagina da vaga, e (3) o recrutador NAO foi contatado antes. A mensagem usa dados REAIS do candidato e destaca intersecoes com a vaga.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         nome_recrutador: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome do recrutador/hiring manager (encontrado na pagina da vaga ou perfil LinkedIn)',
         },
         cargo_recrutador: {
-          type: Type.STRING,
+          type: "string",
           description: 'Cargo do recrutador (Recruiter, HR Manager, Tech Lead, etc.)',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga',
         },
         descricao_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Descricao da vaga (requisitos, responsabilidades)',
         },
       },
@@ -513,10 +526,10 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Verifica se um recrutador ja foi contatado anteriormente (pelo URL do perfil LinkedIn). Use ANTES de gerar mensagem para evitar enviar mensagem duplicada.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         url_perfil: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL do perfil LinkedIn do recrutador',
         },
       },
@@ -528,38 +541,38 @@ export const customToolDeclarations: FunctionDeclaration[] = [
     description:
       'Registra no banco que uma mensagem foi enviada para um recrutador. Use APOS enviar o convite de conexao com sucesso no LinkedIn.',
     parameters: {
-      type: Type.OBJECT,
+      type: "object",
       properties: {
         nome_recrutador: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome do recrutador',
         },
         cargo_recrutador: {
-          type: Type.STRING,
+          type: "string",
           description: 'Cargo do recrutador',
         },
         empresa: {
-          type: Type.STRING,
+          type: "string",
           description: 'Nome da empresa',
         },
         url_perfil: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL do perfil LinkedIn do recrutador',
         },
         url_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'URL da vaga associada',
         },
         titulo_vaga: {
-          type: Type.STRING,
+          type: "string",
           description: 'Titulo da vaga',
         },
         mensagem: {
-          type: Type.STRING,
+          type: "string",
           description: 'Texto da mensagem que foi enviada',
         },
         score_vaga: {
-          type: Type.NUMBER,
+          type: "number",
           description: 'Score da vaga (1-10)',
         },
       },
@@ -568,13 +581,46 @@ export const customToolDeclarations: FunctionDeclaration[] = [
   },
 ];
 
+/**
+ * Definições no formato oficial OpenAI `ChatCompletionTool`
+ * (`{ type: "function", function: { name, description, parameters } }`).
+ * É este array que o loop do agente envia em
+ * `openai.chat.completions.create({ tools })` — funciona com qualquer
+ * provedor OpenAI-compatible (OpenAI, OpenRouter, Ollama, vLLM, ...).
+ */
+export const customTools: OpenAI.Chat.Completions.ChatCompletionTool[] =
+  customToolDefs.map((d) => ({
+    type: 'function',
+    function: {
+      name: d.name,
+      description: d.description,
+      parameters: {
+        type: 'object',
+        properties: d.parameters.properties,
+        ...(d.parameters.required ? { required: d.parameters.required } : {}),
+      },
+    },
+  }));
+
+/** Nomes das tools customizadas — para o dispatcher saber o que é local vs MCP. */
+export const customToolNames: ReadonlySet<string> = new Set(
+  customToolDefs.map((d) => d.name),
+);
+
+/** Retorna true se `name` é uma tool customizada (executada localmente). */
+export function ehToolCustomizada(name: string): boolean {
+  return customToolNames.has(name);
+}
+
 // ========== EXECUTOR DAS TOOLS ==========
 
 export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
   // Config injetada (não mais globais mutáveis): permite dry-run autoritativo e
   // scoring configurável, e torna o executor previsível para testes.
-  const geminiApiKey = config.geminiApiKey;
-  const geminiModel = config.geminiModel;
+  // NOTA: o executor NÃO depende de nenhum LLM de navegação — as tarefas
+  // pesadas (cover letter, currículo, mensagem) usam o provider auxiliar
+  // isolado em src/llm-adapter.ts (LLM_AUX_*), que pode ser um provedor
+  // totalmente diferente do agente.
   // Tentativas por URL (controle de retry, adaptado do ApplyPilot): escopo por
   // execução — recriado a cada chamada. No modo cron isso evita carregar
   // contadores de retry de execuções anteriores.
@@ -1052,14 +1098,8 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
           });
         }
 
-        if (!geminiApiKey || !geminiModel) {
-          return 'ERRO: Configuracao do Gemini nao disponivel para gerar mensagem.';
-        }
-
         try {
           const resultado = await gerarMensagemRecrutador(
-            geminiApiKey,
-            geminiModel,
             perfil,
             nomeRecrutador,
             cargoRecrutador,
@@ -1147,14 +1187,8 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const empresa = args.empresa as string;
         const titulo = args.titulo_vaga as string;
 
-        if (!geminiApiKey || !geminiModel) {
-          return 'ERRO: Configuracao do Gemini nao disponivel para gerar cover letter.';
-        }
-
         try {
           const resultado = await gerarCoverLetter(
-            geminiApiKey,
-            geminiModel,
             perfil,
             descricao,
             empresa,
@@ -1181,15 +1215,8 @@ export function criarExecutorDeTools(perfil: Perfil, config: AgenteConfig) {
         const titulo = (args.titulo_vaga as string) || '';
         const empresa = (args.empresa as string) || '';
 
-        if (!geminiApiKey || !geminiModel) {
-          log('ERRO', 'Curriculo tailored: API key ou modelo nao configurados');
-          return 'ERRO: Configuracao do Gemini nao disponivel. Use escolher_curriculo como fallback.';
-        }
-
         try {
           const resultado = await gerarCurriculoTailored(
-            geminiApiKey,
-            geminiModel,
             perfil,
             descricao,
           );
