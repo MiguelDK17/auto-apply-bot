@@ -65,3 +65,51 @@ export function podarHistorico(
 
   return [inicial, ...history.slice(corte)];
 }
+
+// ========== COMPACTAÇÃO DE SNAPSHOTS ANTIGOS ==========
+//
+// O custo por chamada é dominado por snapshots: cada `browser_snapshot`
+// tem dezenas de milhares de tokens, e cada chamada reenvia o histórico
+// inteiro. Mas snapshot velho é lixo — cada navegação invalida as [ref]
+// anteriores, então o modelo não consegue usar aquele conteúdo para nada.
+//
+// Esta função reescreve o CONTEÚDO das mensagens `tool` antigas (mantendo
+// `role`, `tool_call_id` e a quantidade de mensagens — o pareamento exigido
+// pela API continua válido), preservando intactas apenas as mais recentes.
+// Economia típica: 70–80% dos tokens por chamada, já que snapshot é quase
+// tudo que trafega no histórico.
+
+/** Quantas mensagens `tool` mais recentes mantêm o conteúdo integral. */
+export const MAX_TOOL_INTACTAS = 4;
+/** Abaixo deste tamanho (chars), o conteúdo é mantido como está. */
+export const LIMITE_TOOL_CHARS = 2000;
+/** Quanto do início (chars) é preservado ao truncar, para não perder o fio. */
+export const CABECA_TRUNCADA = 500;
+
+const AVISO_TRUNCADO =
+  'conteudo antigo truncado para economizar contexto. ' +
+  'Para o estado ATUAL da pagina, use browser_snapshot.';
+
+/**
+ * Trunca o conteúdo das mensagens `tool` antigas e longas.
+ * Retorna sempre um novo array (não muta a entrada).
+ */
+export function compactarHistorico(history: HistoricoChat): HistoricoChat {
+  const idxTools: number[] = [];
+  history.forEach((m, i) => {
+    if (m.role === 'tool') idxTools.push(i);
+  });
+  const preservar = new Set(idxTools.slice(-MAX_TOOL_INTACTAS));
+
+  return history.map((m, i) => {
+    if (m.role !== 'tool' || preservar.has(i)) return m;
+    if (typeof m.content !== 'string') return m;
+    if (m.content.length <= LIMITE_TOOL_CHARS) return m;
+    return {
+      ...m,
+      content:
+        `[${AVISO_TRUNCADO} (${m.content.length} chars)]\n` +
+        m.content.slice(0, CABECA_TRUNCADA),
+    };
+  });
+}

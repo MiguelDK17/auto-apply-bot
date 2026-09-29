@@ -25,6 +25,8 @@ import { registrarUsoTokens, type UsageMetadata } from './token-tracker.js';
 export interface LLMResponse {
   text: string;
   usageMetadata?: UsageMetadata;
+  /** Custo real reportado pelo provedor (ex.: usage.cost do OpenRouter). */
+  custoRealUsd?: number;
 }
 
 export interface LLMProvider {
@@ -151,8 +153,10 @@ class OpenAICompatProvider implements LLMProvider {
 
     const data = await response.json() as {
       choices: Array<{ message: { content: string } }>;
-      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; cost?: unknown };
     };
+
+    const custoReal = data.usage?.cost;
 
     return {
       text: data.choices[0].message.content.trim(),
@@ -161,6 +165,7 @@ class OpenAICompatProvider implements LLMProvider {
         candidatesTokenCount: data.usage?.completion_tokens,
         totalTokenCount: data.usage?.total_tokens,
       },
+      ...(typeof custoReal === 'number' ? { custoRealUsd: custoReal } : {}),
     };
   }
 }
@@ -247,6 +252,7 @@ export async function gerarTextoAux(prompt: string, contexto: string): Promise<L
       providerAux.modeloPricing,
       response.usageMetadata,
       contexto,
+      response.custoRealUsd,
     );
     return response;
   } catch (error) {
@@ -261,6 +267,7 @@ export async function gerarTextoAux(prompt: string, contexto: string): Promise<L
         providerFallback.modeloPricing,
         response.usageMetadata,
         `${contexto}_fallback`,
+        response.custoRealUsd,
       );
       return response;
     }

@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import type OpenAI from 'openai';
-import { podarHistorico, type HistoricoChat } from '../src/historico';
+import {
+  podarHistorico,
+  compactarHistorico,
+  MAX_TOOL_INTACTAS,
+  LIMITE_TOOL_CHARS,
+  type HistoricoChat,
+} from '../src/historico';
 
 // Helpers que reproduzem o formato real do histórico do agente (OpenAI):
 // [system/user(texto), assistant(tool_calls), tool, tool, assistant(...), tool, ...]
@@ -31,6 +37,86 @@ function construirHistorico(rodadas: number): HistoricoChat {
 function ehTool(msg: Msg): boolean {
   return msg.role === 'tool';
 }
+
+describe('compactarHistorico — truncagem de snapshots antigos', () => {
+  const snapshotGrande = (id: string): Msg => ({
+    role: 'tool',
+    tool_call_id: id,
+    content: 'SNAPSHOT:' + 'x'.repeat(LIMITE_TOOL_CHARS + 1000),
+  });
+
+  function historicoComSnapshots(n: number): HistoricoChat {
+    const h: HistoricoChat = [{ role: 'system', content: 'prompt' }];
+    for (let i = 0; i < n; i++) {
+      h.push(assistantCall(`t${i}`, `call_${i}`), snapshotGrande(`call_${i}`));
+    }
+    return h;
+  }
+
+  it('trunca tools antigas e preserva as mais recentes intactas', () => {
+    // Cenário: 8 snapshots grandes
+    const history = historicoComSnapshots(8);
+
+    // Ação
+    const resultado = compactarHistorico(history);
+
+    // Validação: mesmas mensagens, mas só as últimas MAX_TOOL_INTACTAS intactas
+    expect(resultado).toHaveLength(history.length);
+    const tools = resultado.filter((m) => m.role === 'tool');
+    expect(tools).toHaveLength(8);
+    const intactas = tools.filter(
+      (m) => typeof m.content === 'string' && m.content.startsWith('SNAPSHOT:'),
+    );
+    expect(intactas).toHaveLength(MAX_TOOL_INTACTAS);
+    // Truncadas carregam o aviso + cabeça do conteúdo
+    const truncadas = tools.filter(
+      (m) => typeof m.content === 'string' && m.content.includes('truncado'),
+    );
+    expect(truncadas).toHaveLength(8 - MAX_TOOL_INTACTAS);
+  });
+
+  it('mantém o pareamento tool_calls ↔ tool após compactar', () => {
+    // Cenário
+    const history = historicoComSnapshots(6);
+
+    // Ação
+    const resultado = compactarHistorico(history);
+
+    // Validação: tool_call_ids e ordem/roles inalterados
+    expect(resultado.map((m) => m.role)).toEqual(history.map((m) => m.role));
+    const idsAntes = history.filter((m) => m.role === 'tool').map((m) => (m as { tool_call_id: string }).tool_call_id);
+    const idsDepois = resultado.filter((m) => m.role === 'tool').map((m) => (m as { tool_call_id: string }).tool_call_id);
+    expect(idsDepois).toEqual(idsAntes);
+  });
+
+  it('não toca em conteúdos curtos nem em mensagens não-tool', () => {
+    // Cenário
+    const history: HistoricoChat = [
+      { role: 'system', content: 'prompt' },
+      userTexto('inicio'),
+      assistantCall('a', 'call_a'),
+      toolResp('call_a'),
+    ];
+
+    // Ação
+    const resultado = compactarHistorico(history);
+
+    // Validação
+    expect(resultado).toEqual(history);
+  });
+
+  it('não muta o array original', () => {
+    // Cenário
+    const history = historicoComSnapshots(6);
+    const antes = history.map((m) => (typeof m.content === 'string' ? m.content.length : 0));
+
+    // Ação
+    compactarHistorico(history);
+
+    // Validação
+    expect(history.map((m) => (typeof m.content === 'string' ? m.content.length : 0))).toEqual(antes);
+  });
+});
 
 describe('podarHistorico — sliding window', () => {
   it('não altera histórico menor ou igual ao máximo', () => {

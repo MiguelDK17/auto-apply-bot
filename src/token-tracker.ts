@@ -98,6 +98,8 @@ interface RegistroUso {
   cachedTokens: number;
   totalTokens: number;
   custoUSD: number;
+  /** true quando o valor veio do provedor (ex.: usage.cost do OpenRouter). */
+  custoReal: boolean;
 }
 
 // ========== TRACKER (SINGLETON) ==========
@@ -132,17 +134,23 @@ function calcularCusto(
 }
 
 /**
- * Registra o uso de tokens de uma chamada ao Gemini.
+ * Registra o uso de tokens de uma chamada ao LLM.
  * Chamar após cada response do modelo.
  *
- * @param modelo - Nome do modelo (ex: 'gemini-2.5-pro')
- * @param usage - usageMetadata da resposta do Gemini
+ * @param modelo - Nome do modelo (ex: 'deepseek/deepseek-chat')
+ * @param usage - usageMetadata da resposta (tokens)
  * @param contexto - Identificador do contexto (ex: 'agente', 'cover_letter', 'curriculo_tailored')
+ * @param custoRealUsd - Custo REAL reportado pelo provedor em USD (ex.:
+ *   `usage.cost` do OpenRouter — o valor exato cobrado naquela execution).
+ *   Quando informado, ele é usado no lugar da estimativa pela tabela estática
+ *   (que vira fallback só para provedores que não reportam custo, como OpenAI
+ *   nativa, Ollama ou endpoints locais).
  */
 export function registrarUsoTokens(
   modelo: string,
   usage: UsageMetadata | undefined | null,
   contexto: string,
+  custoRealUsd?: number,
 ): void {
   if (!usage) return;
 
@@ -151,7 +159,10 @@ export function registrarUsoTokens(
   const cachedTokens = usage.cachedContentTokenCount ?? 0;
   const totalTokens = usage.totalTokenCount ?? (inputTokens + outputTokens);
 
-  const custoUSD = calcularCusto(modelo, inputTokens, outputTokens, cachedTokens);
+  const temCustoReal = typeof custoRealUsd === 'number' && custoRealUsd >= 0;
+  const custoUSD = temCustoReal
+    ? custoRealUsd
+    : calcularCusto(modelo, inputTokens, outputTokens, cachedTokens);
 
   registros.push({
     timestamp: new Date().toISOString(),
@@ -162,6 +173,7 @@ export function registrarUsoTokens(
     cachedTokens,
     totalTokens,
     custoUSD,
+    custoReal: temCustoReal,
   });
 
   custoTotal += custoUSD;
@@ -222,10 +234,14 @@ export function exibirResumoTokens(): void {
   log('INFO', '  CUSTO DE TOKENS');
   log('INFO', '='.repeat(60));
   const cachedTotal = registros.reduce((acc, r) => acc + r.cachedTokens, 0);
+  const comCustoReal = registros.filter((r) => r.custoReal).length;
   log('INFO', `  Total de chamadas: ${registros.length}`);
   log('INFO', `  Total de tokens:   ${tokensTotal.toLocaleString('pt-BR')}`);
   log('INFO', `  Tokens cacheados:  ${cachedTotal.toLocaleString('pt-BR')} (cache implicito do Gemini; reduz o custo do prefixo repetido)`);
   log('INFO', `  Custo total:       $${custoTotal.toFixed(4)} USD`);
+  if (comCustoReal > 0) {
+    log('INFO', `  (custo real reportado pelo provedor em ${comCustoReal}/${registros.length} chamada(s) — sem estimativa)`);
+  }
 
   if (registros.length > 0) {
     log('INFO', `  Media por chamada: $${(custoTotal / registros.length).toFixed(6)} USD`);

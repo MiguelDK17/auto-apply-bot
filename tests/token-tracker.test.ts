@@ -59,4 +59,32 @@ describe('token-tracker — cálculo de custo', () => {
     expect(obterCustoTotal()).toBe(0);
     expect(obterTokensTotal()).toBe(0);
   });
+
+  it('usa o custo real do provedor (usage.cost do OpenRouter) em vez da estimativa', () => {
+    // Cenário: OpenRouter cobrou $0.00042 na execution (valor cravado)
+    // Ação
+    registrarUsoTokens(
+      'deepseek/deepseek-chat',
+      { promptTokenCount: 1_000_000, candidatesTokenCount: 1_000_000, totalTokenCount: 2_000_000 },
+      'agente',
+      0.00042,
+    );
+
+    // Validação: vale o custo real, não a tabela estática
+    expect(obterCustoTotal()).toBeCloseTo(0.00042, 8);
+    expect(obterTokensTotal()).toBe(2_000_000);
+  });
+
+  it('aceita custo real zero (modelo gratuito) sem cair no fallback', () => {
+    // Cenário + Ação
+    registrarUsoTokens(
+      'modelo-qualquer',
+      { promptTokenCount: 1000, candidatesTokenCount: 500, totalTokenCount: 1500 },
+      'agente',
+      0,
+    );
+
+    // Validação
+    expect(obterCustoTotal()).toBe(0);
+  });
 });

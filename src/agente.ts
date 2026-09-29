@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { customTools, ehToolCustomizada, criarExecutorDeTools } from './tools.js';
-import { podarHistorico, type HistoricoChat } from './historico.js';
+import { podarHistorico, compactarHistorico, type HistoricoChat } from './historico.js';
 import { log } from './logger.js';
 import { classificarErroAPI, calcularBackoffRateLimit, MAX_TENTATIVAS, MAX_RATE_LIMIT_CONSECUTIVOS } from './erros.js';
 import { notificarErro } from './notificacoes.js';
@@ -251,7 +251,7 @@ export function criarClientAgente(config: AgenteConfig): OpenAI {
   const baseURL = config.agentLlmBaseUrl || 'https://openrouter.ai/api/v1';
   // OpenRouter recomenda identificar o app — inofensivo para outros provedores.
   const defaultHeaders = baseURL.includes('openrouter.ai')
-    ? { 'HTTP-Referer': 'https://github.com/auto-apply-bot', 'X-Title': 'auto-apply-bot' }
+    ? { 'HTTP-Referer': 'https://github.com/MiguelDK17/auto-apply-bot', 'X-Title': 'auto-apply-bot' }
     : undefined;
   return new OpenAI({
     baseURL,
@@ -418,17 +418,28 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
       // Reset do contador — iteração bem sucedida
       errosConsecutivos = 0;
 
-      // Registra uso de tokens desta chamada (usage OpenAI → formato interno)
+      // Registra uso de tokens desta chamada (usage OpenAI → formato interno).
+      // Inclui cached_tokens do provedor (ex.: prompt caching do OpenRouter):
+      // sem isso, tokens cacheados (bem mais baratos) eram precificados a
+      // preço cheio e o custo estimado ficava inflado.
+      // CUSTO DINÂMICO: o OpenRouter devolve em `usage.cost` o valor EXATO
+      // cobrado naquela execution — quando presente, ele é usado no lugar da
+      // tabela estática (que vira fallback só para provedores que não
+      // reportam custo). Comparação com `number` (e não truthiness) para não
+      // descartar custo 0 (modelos gratuitos).
       const usage = completion.usage;
       if (usage) {
+        const custoReal = (usage as unknown as { cost?: unknown }).cost;
         registrarUsoTokens(
           config.agentLlmModel,
           {
             promptTokenCount: usage.prompt_tokens,
             candidatesTokenCount: usage.completion_tokens,
             totalTokenCount: usage.total_tokens,
+            cachedContentTokenCount: usage.prompt_tokens_details?.cached_tokens ?? 0,
           },
           'agente',
+          typeof custoReal === 'number' ? custoReal : undefined,
         );
       }
 
@@ -543,6 +554,11 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
           content: resultado,
         });
       }
+
+      // Compactação: trunca snapshots antigos mantendo o pareamento
+      // tool_calls ↔ tool válido (ver src/historico.ts). Sem isso, cada
+      // chamada reenvia todos os snapshots na íntegra (~50k tokens/call).
+      history = compactarHistorico(history);
 
       // Sliding window: poda mensagens antigas preservando a validade do
       // histórico para a API OpenAI (ver src/historico.ts).
