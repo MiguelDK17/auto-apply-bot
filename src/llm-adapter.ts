@@ -12,9 +12,9 @@
 //   configurado em LLM_AUX_PROVIDER (pode ser Ollama = custo zero)
 //
 // Providers suportados:
-// - gemini: Google Gemini via @google/genai (padrão)
+// - openai: OpenRouter, OpenAI, Together, Groq, vLLM... (padrão)
 // - ollama: Modelos locais via Ollama REST API (custo zero)
-// - openai: OpenAI ou qualquer API compatível (ex: Together, Groq)
+// - gemini: Google Gemini — provider auxiliar/secundário e fallback automático
 
 import { GoogleGenAI } from '@google/genai';
 import { log } from './logger.js';
@@ -197,9 +197,10 @@ export function configurarLLMAux(config: {
     config.openaiBaseUrl,
   );
 
-  // Fallback: sempre Gemini (se disponível e não for o provider principal)
+  // Fallback: Gemini (provider secundário) quando configurado e o provider
+  // principal não é o gemini.
   if (config.provider !== 'gemini' && config.geminiApiKey) {
-    providerFallback = new GeminiProvider(config.geminiApiKey, config.geminiModel || 'gemini-2.5-pro');
+    providerFallback = new GeminiProvider(config.geminiApiKey, config.geminiModel || 'gemini-2.5-flash');
   }
 
   log('INFO', `LLM auxiliar: ${providerAux.nome} (${config.model})${providerFallback ? ` — fallback: ${providerFallback.nome}` : ''}`);
@@ -229,7 +230,7 @@ function criarProvider(
       );
 
     default:
-      throw new Error(`Provider LLM desconhecido: "${tipo}". Use: gemini, ollama, ou openai.`);
+      throw new Error(`Provider LLM desconhecido: "${tipo}". Use: openai (OpenRouter), ollama, ou gemini.`);
   }
 }
 

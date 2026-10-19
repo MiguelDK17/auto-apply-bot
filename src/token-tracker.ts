@@ -2,12 +2,12 @@
 // Adaptado do beatwad/AIHawk: registra input/output tokens de cada chamada,
 // calcula custo em USD e exibe resumo ao final da execução.
 //
-// A tabela de preços (PRICING, abaixo) cobre Gemini 2.5 Pro/Flash e 2.0 Flash,
-// modelos OpenAI/OpenRouter comuns no agente (gpt-4o-mini, DeepSeek, Llama via
-// OpenRouter) e o alias 'google/gemini-2.0-flash-001';
-// Ollama tem custo zero (roda localmente). Modelos não listados caem no
-// fallback do Gemini 2.5 Pro. Fontes: https://ai.google.dev/gemini-api/docs/pricing
-// e https://openrouter.ai/models (valores aproximados, variam por provedor).
+// A tabela de preços (PRICING, abaixo) cobre os modelos mais usados no
+// OpenRouter (DeepSeek, Llama, Gemini Flash) e o fallback é o Gemini 2.5 Pro.
+// Quando o provedor reporta o custo real (ex.: usage.cost do OpenRouter), a
+// tabela nem é consulted — o valor cravado prevalece.
+// Fontes: https://ai.google.dev/gemini-api/docs/pricing e
+// https://openrouter.ai/models (valores aproximados, variam por provedor).
 
 import { log } from './logger.js';
 
@@ -237,7 +237,7 @@ export function exibirResumoTokens(): void {
   const comCustoReal = registros.filter((r) => r.custoReal).length;
   log('INFO', `  Total de chamadas: ${registros.length}`);
   log('INFO', `  Total de tokens:   ${tokensTotal.toLocaleString('pt-BR')}`);
-  log('INFO', `  Tokens cacheados:  ${cachedTotal.toLocaleString('pt-BR')} (cache implicito do Gemini; reduz o custo do prefixo repetido)`);
+  log('INFO', `  Tokens cacheados:  ${cachedTotal.toLocaleString('pt-BR')} (cache do provedor; reduz o custo do prefixo repetido)`);
   log('INFO', `  Custo total:       $${custoTotal.toFixed(4)} USD`);
   if (comCustoReal > 0) {
     log('INFO', `  (custo real reportado pelo provedor em ${comCustoReal}/${registros.length} chamada(s) — sem estimativa)`);

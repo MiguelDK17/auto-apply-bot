@@ -1,8 +1,16 @@
 # 🤖 Auto Apply Bot — AI-Powered Job Application Agent
 
-**Agente inteligente que automatiza candidaturas a vagas de emprego usando IA (Gemini) + Browser Automation (Playwright MCP).**
+**Agente inteligente que automatiza candidaturas a vagas de emprego usando IA (OpenRouter) + Browser Automation (Playwright MCP).**
 
 O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa cada vaga, preenche formulários automaticamente com respostas variadas e naturais, e gerencia todo o processo de candidatura — tudo usando seu navegador Chrome já logado.
+
+> ### 🧠 Por que OpenRouter como cérebro
+>
+> O agente roda no **padrão OpenAI SDK**, então o provedor é uma decisão de *configuração*, não de código. Passando pelo **OpenRouter**, você troca o modelo **sem mexer uma linha**: um `DeepSeek` para custo mínimo, um `Llama` para contexto longo, um `Gemini Flash` para velocidade — ou qualquer outro modelo compatível, com tool calling, na mesma hora.
+>
+> **Custo × desempenho sob medida, sem trade-off de arquitetura.** Um único `AGENT_LLM_MODEL` no `.env` define o equilíbrio do seu run: o modelo grátis de alto volume para varredura, um pago quando a vaga realmente merece, um local quando a privacidade pesa mais. A inteligência do agente continua a mesma — a tool calling, o scoring, o histórico e o controle de segurança não mudam; só o motor por trás.
+>
+> E o custo deixou de ser estimativa: o OpenRouter devolve o valor **real** de cada requisição, que o bot reporta no dashboard. Menos adivinhação, mais controle.
 
 ---
 
@@ -20,7 +28,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 
 | Feature | Descrição |
 |---|---|
-| **AI Agent (Gemini)** | Usa Google Gemini como cérebro — entende vagas, preenche formulários, toma decisões |
+| **AI Agent (OpenRouter)** | Modelo configurável via OpenRouter (DeepSeek, Llama, Gemini Flash, Qwen...) — sem lock-in de provedor |
 | **Playwright MCP** | Controla o Chrome real do usuário via CDP — reaproveita a sessão já logada |
 | **Tailored Resume** | Gera currículo personalizado por vaga via IA — destaca skills relevantes, converte HTML→PDF |
 | **Cover Letter** | Gera carta de apresentação personalizada por vaga com validação anti-fabricação |
@@ -38,15 +46,17 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 | **File Logging** | Log completo de cada execução salvo em arquivo |
 | **Cron Scheduling** | Agende execuções automáticas diárias |
 | **Recovery** | Detecta execução anterior interrompida e avisa o agente; o anti-duplicata (SQLite) evita refazer o trabalho já concluído |
-| **Sliding Window** | Gerencia contexto do Gemini descartando histórico antigo — evita estouro de tokens |
+| **Sliding Window** | Gerencia o contexto descartando histórico antigo — evita estouro de tokens |
 | **Pre-defined Q&A** | Respostas base para perguntas comuns em formulários |
 | **Response Variation** | Varia respostas automaticamente para parecer humano |
 | **Error Classification** | Classifica falhas como permanentes (pula) ou retriáveis (retenta com backoff) |
 | **CAPTCHA via Telegram** | Envia screenshot do CAPTCHA pro Telegram — humano resolve, bot continua |
 | **Recruiter Messaging** | Envia mensagem personalizada para recrutadores no LinkedIn (nota de conexão) |
-| **Token Cost Tracking** | Registra tokens de cada chamada ao Gemini e calcula custo em USD |
-| **Multi-LLM** | Adapter pattern: Gemini (padrão), Ollama (local/grátis) ou OpenAI-compatible como provider auxiliar |
+| **Token Cost Tracking** | Registra tokens de cada chamada e calcula custo em USD — com o **custo real** reportado pelo provedor quando disponível |
+| **Multi-LLM** | Adapter pattern: **OpenRouter** (principal), **Ollama** (local/grátis) ou **Gemini** (auxiliar/secundário) |
 | **PII Anonymization** | Anonimiza nome, email, telefone e links antes de enviar ao LLM — restaura no resultado final |
+| **Docker Ready** | Imagem completa (bot + Chrome headful + noVNC) e **control server**: o container sobe a UI e o agente só roda quando você pedir |
+| **Web Dashboard** | Dashboard em tempo real com botões de iniciar/parar, log ao vivo e tema claro/escuro |
 
 ---
 
@@ -54,11 +64,11 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                    index.ts                      │
-│            (orquestrador principal)              │
+│            index.ts / control-server.ts          │
+│        (orquestrador + UI de comando)            │
 ├──────────┬──────────┬──────────┬────────────────┤
 │ agente   │ dashboard│ telegram │ email / cron   │
-│ (Gemini) │ (HTTP)   │ (HTTPS)  │ (SMTP)         │
+│(OpenRouter)│ (HTTP)  │ (HTTPS)  │ (SMTP)         │
 ├──────────┴──────────┴──────────┴────────────────┤
 │                   tools.ts                       │
 │  pontuar_vaga | gerar_curriculo_tailored         │
@@ -73,7 +83,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 └─────────────────────────────────────────────────┘
 ```
 
-**Stack:** TypeScript · Google Gemini API · Playwright MCP · SQLite · Node.js · Multi-LLM (Ollama/OpenAI)
+**Stack:** TypeScript · OpenRouter (SDK OpenAI) · Playwright MCP · SQLite · Node.js · Docker · Multi-LLM (Ollama/Gemini)
 
 ---
 
@@ -81,11 +91,11 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 
 ### 1. Pré-requisitos
 
-- **Node.js** 18+
-- **Google Chrome** instalado
-- **Chave da API do Gemini** ([Google AI Studio](https://aistudio.google.com/apikey))
+- **Node.js** 22 (o `better-sqlite3` tem prebuild só para versões específicas — use o 22)
+- **Google Chrome** instalado (ou use a imagem Docker, que já traz o Chrome)
+- **Chave da API do OpenRouter** ([openrouter.ai/keys](https://openrouter.ai/keys)) — ou de qualquer provedor OpenAI-compatible
 
-> ⚠️ **Importante**: O plano gratuito do Gemini tem limites muito baixos (ex: 20 requests/dia no Flash, limites ainda menores no Pro). O bot consome muitas chamadas por execução (cada iteração do agente = 1 request), então o tier gratuito **não é suficiente** para uso real. É necessário [ativar o billing](https://aistudio.google.com/apikey) na sua API key para ter limites adequados (2000 req/min no plano pago). O custo do `gemini-2.5-flash` é muito baixo (~$0.15/milhão de tokens de input).
+> **💡 Sobre custo:** com OpenRouter você paga **por token, só pelo que usar** — não existe cota diária nem tier para "ativar". O bot consome ~1 request por iteração (cada iteração = 1 chamada), então o custo é previsível e você escolhe o ponto do curva custo × desempenho mudando `AGENT_LLM_MODEL`. Modelos gratuitos (`:free`) rodam o bot inteiro sem custo nenhum — o dashboard mostra o valor real de cada chamada.
 
 ### 2. Instalação
 
@@ -105,7 +115,7 @@ cp config/curriculos.example.json config/curriculos.json
 cp config/respostas.example.json config/respostas.json
 
 # Edite com seus dados
-nano .env                    # Chave do Gemini + configs
+nano .env                    # Chave do OpenRouter (AGENT_LLM_API_KEY) + configs
 nano config/perfil.json      # Seus dados pessoais/profissionais
 nano config/sites.json       # Sites e URLs de busca
 nano config/respostas.json   # Respostas pré-definidas para formulários
@@ -131,6 +141,8 @@ DRY_RUN=true npm start
 npm start
 ```
 
+Com `CONTROL_MODE=true` no `.env`, o processo sobe **só a UI** (dashboard) e o agente espera você apertar "Iniciar bot" — nenhuma cota é gasta até lá. É o padrão do Docker.
+
 ### 5b. Via Docker (alternativa — pilha completa)
 
 ```bash
@@ -138,12 +150,22 @@ cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
 # config/*.json precisam existir (mesmo passo 3 acima)
 
 docker compose build
-docker compose run --rm bot        # execução única (manual)
+docker compose up -d              # sobe a UI (porta 1717) — o bot não roda sozinho
+```
+
+Modos de navegador (veja a seção abaixo):
+
+```bash
+# Modo A: Chrome dentro do container (login via noVNC em http://localhost:7900)
+docker compose up -d
+
+# Modo B: usa o Chrome do host, já logado (network_mode: host)
+docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml up -d
 ```
 
 O container inclui bot + Chrome headful + noVNC. Portas: `1717` (dashboard) e `7900` (navegador remoto — abra no browser para fazer login nos sites e resolver CAPTCHAs; o perfil persiste em volume Docker). A porta CDP (9222) fica interna ao container de propósito. `DRY_RUN=true` continua valendo para o primeiro teste.
 
-**Modo UI (padrão):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
+**Modo UI (padrão no Docker):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
 
 **Modo automático (opcional):** `CONTROL_MODE=false` no `.env` volta ao comportamento antigo — o agente roda assim que o container sobe (útil para cron).
 
@@ -152,12 +174,40 @@ O container inclui bot + Chrome headful + noVNC. Portas: `1717` (dashboard) e `7
 **Modo B — usar o Chrome que você já tem aberto (logado):**
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml run --rm bot
+docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml up -d
 ```
 
 No modo B o container compartilha a rede do host (`network_mode: host`) e conversa com o Chrome do host via `127.0.0.1:9222` — ou seja, o bot age no navegador onde você **já está logado** (LinkedIn, Gupy, etc.), sem refazer login. O dashboard continua em `http://localhost:1717`.
 
 Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugging-port=9222`) e `DRY_RUN=true` até você confiar no fluxo — neste modo o bot pilota seu navegador real.
+
+> ⚠️ **Atenção ao `docker compose run`:** ele **não publica as portas** do serviço (precisa de `--service-ports`) e cria um container *paralelo*, sem derrubar o que já está de pé. Para o uso normal, prefira `up -d`.
+
+---
+
+## 🐳 Docker & UI de comando
+
+O projeto é **docker-first**: uma imagem com Node 22, Chrome headful, Xvfb e noVNC, e um **control server** que transforma o container em uma UI de comando.
+
+```bash
+docker compose build
+docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml up -d
+# abra http://localhost:1717
+```
+
+| Peça | O que faz |
+|---|---|
+| `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc`/`novnc` + `@playwright/mcp` pré-instalado |
+| `docker/entrypoint.sh` | Sobe Xvfb → noVNC → Chrome headful (perfil em volume) → espera o CDP → executa o bot |
+| `docker-compose.yml` | Modo A: Chrome no container, portas `1717` (UI) e `7900` (noVNC), volumes para perfil/dados/logs/screenshots |
+| `docker-compose.host-chrome.yml` | Modo B: `network_mode: host` + `CDP_ENDPOINT=127.0.0.1:9222` → usa o Chrome do host |
+| `src/control-server.ts` | UI de comando: `POST /api/start`, `POST /api/stop`, `GET /api/status`, `GET /api/logs` |
+
+Detalhes que importam:
+- **uid alinhado**: o container roda como `node` (uid 1000) — o mesmo do host — então os bind-mounts (`curriculos/`, `config/`) continuam graváveis.
+- **Perfil persistente**: o volume `chrome-profile` guarda a sessão do Chrome entre runs (logins não somem).
+- **Custo dinâmico**: quando o provedor reporta o custo real (OpenRouter), o dashboard mostra o valor exato, não uma estimativa.
+- **`CONTROL_MODE=false`** volta ao auto-run, para uso com cron.
 
 ---
 
@@ -167,9 +217,13 @@ Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugg
 
 | Variável | Descrição | Padrão |
 |---|---|---|
-| `GEMINI_API_KEY` | Chave da API do Google Gemini | *obrigatório* |
+| `AGENT_LLM_BASE_URL` | Base URL do LLM do agente (OpenRouter, OpenAI, Ollama, vLLM...) | `https://openrouter.ai/api/v1` |
+| `AGENT_LLM_API_KEY` | Chave do provedor do agente | *obrigatório* |
+| `AGENT_LLM_MODEL` | Modelo do agente (qualquer um do OpenRouter com tool calling) | `deepseek/deepseek-v4-flash-0731` |
 | `CDP_ENDPOINT` | Endpoint CDP do Chrome (use `127.0.0.1`, não `localhost`, p/ evitar `ECONNREFUSED ::1`) | `http://127.0.0.1:9222` |
-| `GEMINI_MODEL` | Modelo do Gemini (flash é ~16x mais barato) | `gemini-2.5-flash` |
+| `CONTROL_MODE` | `true` = container sobe só a UI (o agente roda sob demanda) | `true` |
+| `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
+| `DASHBOARD_HOST` | Bind do dashboard (`0.0.0.0` no Docker p/ port-mapping) | `127.0.0.1` |
 | `LIMITE_DIARIO` | Max candidaturas por dia | `10` |
 | `MAX_POR_EXECUCAO` | Teto de envios reais por execução (anti-rajada) | `5` |
 | `DELAY_MIN` | Delay mínimo entre ações (ms) | `2000` |
@@ -177,7 +231,6 @@ Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugg
 | `SCORE_MINIMO` | Score mínimo para aplicar (1-10) | `6` |
 | `CUSTO_MAX_USD` | Teto de custo por execução em USD (0 = desativado) | `0` |
 | `DRY_RUN` | Modo teste — checkpoint bloqueia envio e registro grava como `dry-run` | `true` |
-| `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
 | `TELEGRAM_BOT_TOKEN` | Token do bot Telegram | *opcional* |
 | `TELEGRAM_CHAT_ID` | Chat ID do Telegram | *opcional* |
 | `SMTP_HOST` | Servidor SMTP | `smtp.gmail.com` |
@@ -186,11 +239,13 @@ Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugg
 | `EMAIL_DESTINATARIO` | Email para relatórios | *opcional* |
 | `CRON_ATIVO` | Ativar agendamento | `false` |
 | `CRON_HORARIO` | Horário da execução | `09:00` |
-| `LLM_AUX_PROVIDER` | Provider auxiliar: `gemini`, `ollama`, `openai` | `gemini` |
-| `LLM_AUX_MODEL` | Modelo do provider auxiliar | `gemini-2.5-flash` |
+| `LLM_AUX_PROVIDER` | Provider auxiliar: `openai` (OpenRouter), `ollama` (local), `gemini` | `openai` |
+| `LLM_AUX_MODEL` | Modelo do provider auxiliar | `deepseek/deepseek-chat` |
+| `OPENAI_API_KEY` | Chave do provider auxiliar OpenAI-compatible | *opcional* |
+| `OPENAI_BASE_URL` | Base URL do provider auxiliar OpenAI-compatible | `https://api.openai.com/v1` |
 | `OLLAMA_URL` | URL do servidor Ollama | `http://localhost:11434` |
-| `OPENAI_API_KEY` | Chave da API OpenAI (ou compatível) | *opcional* |
-| `OPENAI_BASE_URL` | Base URL da API OpenAI-compatible | `https://api.openai.com/v1` |
+| `GEMINI_API_KEY` | Chave do Google Gemini (só p/ provider auxiliar/fallback) | *opcional* |
+| `GEMINI_MODEL` | Modelo Gemini do provider auxiliar | `gemini-2.5-flash` |
 
 ### `config/perfil.json` — Perfil do Candidato
 
@@ -210,14 +265,19 @@ Configure múltiplos currículos otimizados para diferentes tipos de vaga. O age
 
 ---
 
-## 📊 Dashboard
+## 📊 Dashboard & UI de comando
 
-Acesse `http://localhost:3000` durante a execução para ver em tempo real:
+A UI fica em `http://localhost:1717` (Docker) ou `http://localhost:3000` (local). Ela é o **control server**: o container sobe a interface e o agente **só roda quando você manda** — zero cota gasta até você clicar.
 
-- Total de candidaturas (hoje e geral)
-- Candidaturas por plataforma
-- Score médio
-- Tabela detalhada com empresa, vaga, score, status e link
+- **▶ Iniciar bot** / **⏹ Parar** — o run acontece em processo filho, dá para interromper no meio
+- **Checkbox dry-run** — simula o fluxo sem enviar nada (marcado por padrão)
+- **Log ao vivo** — colorizado por nível, com scroll que respeita sua posição de leitura
+- **Navegador conectado?** — mostra o título e a URL da aba que o bot está usando
+- **Custo real** — o valor reportado pelo provedor no último run
+- **Tema claro/escuro** — botão "◐ Tema" (preferência salva no navegador)
+- Estatísticas: candidaturas de hoje/total, por plataforma, score médio e funil de resultados
+
+API para automação: `POST /api/start` (`{ dryRun }`), `POST /api/stop`, `GET /api/status`, `GET /api/logs`.
 
 ---
 
@@ -274,8 +334,8 @@ Resultados válidos: `aguardando`, `respondido`, `entrevista`, `oferta`, `rejeit
 Diferente de outros bots que enviam o mesmo currículo para todas as vagas, o Auto Apply Bot **gera um currículo e carta de apresentação personalizados para cada vaga**:
 
 1. O agente lê a descrição completa da vaga
-2. Faz uma chamada separada ao Gemini com prompt ultra-restritivo
-3. O Gemini **reorganiza e reescreve** o currículo destacando skills relevantes
+2. Faz uma chamada separada ao **provider auxiliar** (`LLM_AUX_*`) com prompt ultra-restritivo
+3. O modelo **reorganiza e reescreve** o currículo destacando skills relevantes
 4. **Validação anti-fabricação**: escaneia o HTML gerado buscando tecnologias que o candidato não possui — rejeita se encontrar
 5. Converte HTML → PDF via Chrome headless (`--print-to-pdf`)
 6. Cache por hash da descrição — vagas similares reutilizam o mesmo PDF
@@ -290,7 +350,7 @@ Se a geração falhar, cai automaticamente nos currículos pré-prontos (fallbac
 
 Inspirado no AIHawk (29k stars), o bot cacheia respostas de formulário no SQLite:
 
-- **Primeira execução**: gera respostas via Gemini e salva no cache
+- **Primeira execução**: gera respostas via provider auxiliar e salva no cache
 - **Execuções seguintes**: busca no cache antes de gerar — economiza tokens
 - **Matching**: exact match (sanitizado) + substring match para dropdowns
 - **Regra inteligente**: respostas que mencionam o nome da empresa não são cacheadas (são específicas demais)
@@ -347,7 +407,7 @@ Adaptado do [beatwad](https://medium.com/@beatwad): após se candidatar a uma va
 
 1. Identifica o recrutador na página da vaga
 2. Verifica se já foi contatado anteriormente (banco SQLite)
-3. Gera mensagem personalizada via Gemini (max 280 chars — limite do LinkedIn)
+3. Gera mensagem personalizada via provider auxiliar (max 280 chars — limite do LinkedIn)
 4. Navega até o perfil do recrutador
 5. Envia convite de conexão com nota personalizada
 6. Registra no banco para não recontatar
@@ -377,21 +437,41 @@ Adaptado do [beatwad](https://medium.com/@beatwad): antes de enviar dados ao LLM
 
 **Dados profissionais** (stack, experiências, resumo) continuam visíveis no prompt — são necessários para gerar conteúdo relevante.
 
-> **Limitação importante (seja realista):** a anonimização cobre os **módulos auxiliares** (cover letter, currículo, mensagem ao recrutador). O **agente principal** recebe o nome real no system prompt e, ao preencher formulários, obtém email/telefone/links via a tool `obter_perfil_candidato` — ou seja, esses dados de contato chegam ao LLM principal (Gemini). Se quiser manter os módulos auxiliares 100% locais (sem enviar nada a provedores externos), use o provider **Ollama**.
+> **Limitação importante (seja realista):** a anonimização cobre os **módulos auxiliares** (cover letter, currículo, mensagem ao recrutador). O **agente principal** recebe o nome real no system prompt e, ao preencher formulários, obtém email/telefone/links via a tool `obter_perfil_candidato` — ou seja, esses dados de contato chegam ao LLM principal (o modelo do OpenRouter). Se quiser manter os módulos auxiliares 100% locais (sem enviar nada a provedores externos), use o provider **Ollama**.
 
 ---
 
 ## 🔀 Multi-LLM (Adapter Pattern)
 
-Adaptado do [AIHawk](https://github.com/feder-cr/Auto_Jobs_Applier_AIHawk): o agente principal sempre usa **Gemini** (precisa do SDK de function calling), mas as tarefas auxiliares (cover letter, currículo tailored, mensagem para recrutador) podem usar **qualquer provider**:
+O projeto tem **dois níveis** de LLM, independentes entre si:
 
-| Provider | Config | Custo | Observação |
-|---|---|---|---|
-| **Gemini** (padrão) | `LLM_AUX_PROVIDER=gemini` | Pago (API key) | Mesmo modelo do agente |
-| **Ollama** (local) | `LLM_AUX_PROVIDER=ollama` | Grátis | Roda na sua máquina, sem enviar dados |
-| **OpenAI-compatible** | `LLM_AUX_PROVIDER=openai` | Varia | OpenAI, Groq, Together AI, Mistral, vLLM |
+| Nível | Provider padrão | Config | Custo | Para quê |
+|---|---|---|---|---|
+| **Agente** (navegação) | **OpenRouter** | `AGENT_LLM_*` | Varia por modelo | Loop de decisão, tool calling, navegação |
+| **Auxiliar** (tarefas pesada) | **OpenRouter** | `LLM_AUX_PROVIDER=openai` | Varia por modelo | Currículo tailored, cover letter, mensagem ao recrutador |
+| **Auxiliar local** | **Ollama** | `LLM_AUX_PROVIDER=ollama` | **Grátis** | Tarefas sem PII, 100% offline |
+| **Auxiliar secundário** | **Gemini** | `LLM_AUX_PROVIDER=gemini` | Pago | Provider alternativo + fallback automático |
 
-### Setup Ollama (custo zero)
+Ou seja: **OpenRouter é o padrão em tudo**, Ollama é a rota local (custo zero, privacidade), e o Gemini ficou como provider auxiliar/secundário — útil quando um modelo específico do Google faz sentido para o currículo, ou como fallback automático quando o provider principal falha.
+
+O agente usa o **SDK oficial da OpenAI** (`openai`), então qualquer endpoint compatível funciona — não há lock-in de provedor em nenhuma linha do código.
+
+### Setup OpenRouter (padrão)
+
+```bash
+# Em https://openrouter.ai/keys gere uma chave
+AGENT_LLM_BASE_URL=https://openrouter.ai/api/v1
+AGENT_LLM_API_KEY=sk-or-v1-...
+AGENT_LLM_MODEL=deepseek/deepseek-v4-flash-0731   # ou o que preferir
+
+# Auxiliar no mesmo provider
+LLM_AUX_PROVIDER=openai
+LLM_AUX_MODEL=deepseek/deepseek-chat
+OPENAI_API_KEY=sk-or-v1-...
+OPENAI_BASE_URL=https://openrouter.ai/api/v1
+```
+
+### Setup Ollama (custo zero, local)
 
 ```bash
 # Instale: https://ollama.com
@@ -406,17 +486,15 @@ LLM_AUX_MODEL=llama3
 OLLAMA_URL=http://localhost:11434
 ```
 
-### Setup OpenAI-compatible
+### Setup Gemini (auxiliar/secundário)
 
 ```bash
-# Funciona com: OpenAI, Groq, Together AI, Mistral, vLLM
-LLM_AUX_PROVIDER=openai
-LLM_AUX_MODEL=gpt-4o-mini
-OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.openai.com/v1
+LLM_AUX_PROVIDER=gemini
+LLM_AUX_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=...
 ```
 
-**Fallback automático**: se o provider auxiliar falhar, o bot retenta automaticamente com Gemini.
+**Fallback automático**: se o provider auxiliar falhar, o bot retenta com o Gemini (quando configurado).
 
 ---
 
@@ -426,18 +504,20 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 auto-apply-bot/
 ├── src/
 │   ├── index.ts          # Entry point + orquestração
-│   ├── agente.ts         # Loop do agente Gemini
+│   ├── agente.ts         # Loop do agente (SDK OpenAI / OpenRouter)
+│   ├── control-server.ts # Control server: UI de comando (start/stop/status/logs)
 │   ├── tools.ts          # Custom tools (scoring, CV, screenshot, cache...)
 │   ├── curriculo-tailored.ts  # Geração de currículo personalizado por vaga
 │   ├── cover-letter.ts   # Geração de carta de apresentação por vaga
 │   ├── erros.ts          # Classificação de falhas (permanentes vs retriáveis)
 │   ├── mensagem-recrutador.ts  # Mensagem personalizada para recrutadores
-│   ├── token-tracker.ts  # Tracking de custo de tokens (USD)
-│   ├── llm-adapter.ts   # Multi-LLM adapter (Gemini/Ollama/OpenAI)
+│   ├── token-tracker.ts  # Tracking de custo de tokens (USD, custo real quando houver)
+│   ├── llm-adapter.ts   # Multi-LLM adapter (OpenRouter/Ollama/Gemini)
 │   ├── anonimizacao.ts  # Anonimização de PII (nome, email, telefone, links)
 │   ├── database.ts       # SQLite (candidaturas, vagas vistas, cache, mensagens)
-│   ├── dashboard.ts      # Dashboard web
+│   ├── dashboard.ts      # Dashboard web (UI + painel de controle)
 │   ├── mcp-client.ts     # Conexão Playwright MCP
+│   ├── historico.ts      # Sliding window + compactação de snapshots
 │   ├── logger.ts         # Log em arquivo
 │   ├── notificacoes.ts   # Telegram
 │   ├── email.ts          # Relatórios por email
@@ -448,6 +528,11 @@ auto-apply-bot/
 │   ├── curriculos.example.json   # Template dos currículos
 │   ├── sites.json                # Sites de vagas
 │   └── respostas.json            # Respostas pré-definidas
+├── docker/
+│   └── entrypoint.sh     # Xvfb + Chrome headful + noVNC → sobe o bot
+├── Dockerfile            # Imagem: node:22 + Chrome + Xvfb/noVNC
+├── docker-compose.yml    # Modo A: Chrome no container (UI na 1717, noVNC na 7900)
+├── docker-compose.host-chrome.yml  # Modo B: usa o Chrome do host (já logado)
 ├── .env.example
 ├── package.json
 └── tsconfig.json
@@ -473,7 +558,7 @@ auto-apply-bot/
 - [x] ~~Loop de feedback de resultados (entrevista/oferta/rejeição) + métricas de funil~~
 - [x] ~~Critérios eliminatórios de fit (idioma, localização)~~
 - [x] ~~Mensagem automática para recrutadores~~
-- [x] ~~Multi-LLM (Gemini + Ollama local como fallback)~~
+- [x] ~~Multi-LLM (OpenRouter principal + Ollama local + Gemini auxiliar)~~
 - [x] ~~Anonimização de dados antes de enviar ao LLM~~
 - [x] ~~Docker support (bot + Chrome headful + noVNC via compose)~~
 - [x] ~~Tracking de custo de tokens~~

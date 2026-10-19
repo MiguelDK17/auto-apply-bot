@@ -41,7 +41,7 @@ function validarEnv(): AgenteConfig {
   return {
     agentLlmBaseUrl: process.env.AGENT_LLM_BASE_URL || 'https://openrouter.ai/api/v1',
     agentLlmApiKey,
-    agentLlmModel: process.env.AGENT_LLM_MODEL || 'google/gemini-2.0-flash-001',
+    agentLlmModel: process.env.AGENT_LLM_MODEL || 'deepseek/deepseek-v4-flash-0731',
     // Legado (fallback opcional do LLM auxiliar — o agente NÃO usa mais).
     geminiApiKey: process.env.GEMINI_API_KEY || '',
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
@@ -68,8 +68,10 @@ function validarEnv(): AgenteConfig {
     cronAtivo: process.env.CRON_ATIVO === 'true',
     cronHorario: process.env.CRON_HORARIO || '09:00',
     // Multi-LLM
-    llmAuxProvider: process.env.LLM_AUX_PROVIDER || 'gemini',
-    llmAuxModel: process.env.LLM_AUX_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    // Padrão: OpenRouter (via provider OpenAI-compatible). Ollama = local/grátis.
+    // Gemini = provider auxiliar/secundário (+ fallback automático).
+    llmAuxProvider: process.env.LLM_AUX_PROVIDER || 'openai',
+    llmAuxModel: process.env.LLM_AUX_MODEL || process.env.AGENT_LLM_MODEL || 'deepseek/deepseek-chat',
     ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
     openaiApiKey: process.env.OPENAI_API_KEY || '',
     openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',

@@ -137,7 +137,7 @@ function categorizarSkills(perfil: Perfil): string {
   return linhas.join('\n');
 }
 
-// ========== PROMPT PARA O GEMINI ==========
+// ========== PROMPT DE OTIMIZACAO DE CURRICULO ==========
 
 function buildTailoringPrompt(htmlBase: string, descricaoVaga: string, perfil: Perfil): string {
   return `Voce e um especialista em otimizacao de curriculos para sistemas ATS (Applicant Tracking System).
@@ -234,7 +234,7 @@ export async function gerarCurriculoTailored(
     htmlOtimizado = limparMarkdown(response.text);
 
     if (!htmlOtimizado.includes('<!DOCTYPE html') && !htmlOtimizado.includes('<html')) {
-      throw new Error('Gemini retornou resposta que nao e HTML valido');
+      throw new Error('O provider auxiliar retornou resposta que nao e HTML valido');
     }
 
     // Restaura dados reais (nome, email, telefone, links) no HTML

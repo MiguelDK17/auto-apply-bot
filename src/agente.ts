@@ -252,7 +252,7 @@ Quando terminar todos os sites ou atingir o limite diario, faca um resumo:
  * Funciona com qualquer endpoint OpenAI-compatible — basta configurar:
  * - `AGENT_LLM_BASE_URL` (ex: https://openrouter.ai/api/v1, https://api.openai.com/v1, http://localhost:11434/v1)
  * - `AGENT_LLM_API_KEY` (chave do provedor; Ollama local aceita qualquer valor)
- * - `AGENT_LLM_MODEL` (ex: google/gemini-2.0-flash-001, gpt-4o-mini, llama3.1)
+ * - `AGENT_LLM_MODEL` (ex: deepseek/deepseek-v4-flash-0731, google/gemini-2.0-flash-001, gpt-4o-mini, llama3.1)
  */
 export function criarClientAgente(config: AgenteConfig): OpenAI {
   const baseURL = config.agentLlmBaseUrl || 'https://openrouter.ai/api/v1';
