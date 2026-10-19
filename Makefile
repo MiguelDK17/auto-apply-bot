@@ -1,15 +1,15 @@
 # Atalhos para o ciclo de vida do bot (Docker).
 # Todos delegam para ./bin/jobbot — a logica mora no script, nao aqui.
 
-.PHONY: up up-host up-local down logs status shell rebuild ui test build
+.PHONY: up up-local down logs status shell rebuild ui chrome test build
 
-up:        ## sobe o bot (escolhe o modo sozinho)
+chrome:    ## abre o Chrome nativo (janela real, teclado real)
+	@./bin/jobbot chrome
+
+up:        ## sobe o bot (usa o Chrome do host se existir)
 	@./bin/jobbot up
 
-up-host:   ## sobe forçando o Chrome do host (ja logado)
-	@./bin/jobbot up --host
-
-up-local:  ## sobe forçando o Chrome dentro do container
+up-local:  ## sobe forçando o Chrome dentro do container (noVNC)
 	@./bin/jobbot up --local
 
 down:      ## derruba os containers (preserva volumes e banco)

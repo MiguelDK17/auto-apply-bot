@@ -33,33 +33,16 @@ x-comum: &comum
     - ./curriculos:/app/curriculos
 
 services:
-  # ---- Modo local: Chrome dentro do container -------------------------------
-  # UI na BOT_UI_PORT, navegador remoto na BOT_NOVNC_PORT.
-  # A porta CDP fica interna (o bot e o Chrome conversam dentro do container).
+  # ---- Padrão: usa o Chrome do HOST (janela real, teclado real) ------------
+  # O container conversa com o Chrome da sua máquina via CDP
+  # (network_mode: host → 127.0.0.1 é o mesmo host).
+  # Se o Chrome do host não estiver no ar, o entrypoint cai para o Chrome
+  # próprio do container (com noVNC) em vez de morrer.
   #
-  # `docker compose up -d` sobe o container E o navegador junto: o Chrome é
-  # persistente (perfil em volume) e fica ESPERANDO, pronto para qualquer
-  # execucao. O bot nunca abre/fecha o navegador — assim o login nao se perde.
+  # Para abrir o Chrome do host:  ./bin/jobbot chrome
   bot:
     <<: *comum
     container_name: auto-apply-bot
-    restart: unless-stopped
-    ports:
-      - "${BOT_UI_PORT:-1717}:3000"
-      - "${BOT_NOVNC_PORT:-7900}:7900"
-    environment:
-      DASHBOARD_HOST: 0.0.0.0
-      CONTROL_MODE: "true"
-      # O Chrome sobe junto com o container e o watchdog o mantem vivo.
-      START_LOCAL_CHROME: "true"
-
-  # ---- Modo host: usa o Chrome do host (ja logado) --------------------------
-  # Sobe com: docker compose --profile host-chrome up -d bot-host
-  # (o atalho `./bin/jobbot up` faz isso sozinho quando detecta o CDP do host)
-  bot-host:
-    <<: *comum
-    container_name: auto-apply-bot-host
-    profiles: ["host-chrome"]
     restart: unless-stopped
     network_mode: host
     environment:
@@ -67,8 +50,24 @@ services:
       DASHBOARD_PORT: "${BOT_UI_PORT:-1717}"
       CONTROL_MODE: "true"
       CDP_ENDPOINT: "http://127.0.0.1:${BOT_CDP_PORT:-9222}"
-      # "auto": tenta o Chrome do host e cai para o local se ele nao responder.
+      # "auto": usa o Chrome do host; se ele não responder, sobe o local.
       START_LOCAL_CHROME: "auto"
+
+  # ---- Modo container: Chrome DENTRO do container (noVNC) -------------------
+  # Sobe com: docker compose --profile container up -d bot-container
+  # Útil para rodar 24/7 numa VPS, onde não existe desktop.
+  bot-container:
+    <<: *comum
+    container_name: auto-apply-bot-container
+    profiles: ["container"]
+    restart: unless-stopped
+    ports:
+      - "${BOT_UI_PORT:-1717}:3000"
+      - "${BOT_NOVNC_PORT:-7900}:7900"
+    environment:
+      DASHBOARD_HOST: 0.0.0.0
+      CONTROL_MODE: "true"
+      START_LOCAL_CHROME: "true"
 
 volumes:
   chrome-profile:

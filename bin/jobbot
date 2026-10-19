@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # jobbot — atalho único para o ciclo de vida do bot em Docker.
 #
-#   ./bin/jobbot up          sobe (escolhe o modo sozinho)
-#   ./bin/jobbot up --host   força o modo host (Chrome do host, já logado)
-#   ./bin/jobbot up --local  força o modo local (Chrome no container)
+#   ./bin/jobbot chrome     abre o Chrome NATIVO (janela real, teclado real)
+#   ./bin/jobbot up          sobe o container (usa o Chrome do host se existir)
+#   ./bin/jobbot up --local  força o Chrome dentro do container (noVNC)
 #   ./bin/jobbot down        derruba tudo
 #   ./bin/jobbot logs        segue o log (Ctrl+C sai)
 #   ./bin/jobbot status      mostra o estado
@@ -56,20 +56,24 @@ modo() {
 cmd_up() {
   local m; m="$(modo "${1:-auto}")"
   if [ "$m" = "host" ]; then
+    if ! cdp_do_host_vivo; then
+      warn "Chrome do host sem CDP na porta ${CDP_PORT} — subindo assim mesmo (o container cai para o Chrome dele)."
+    fi
     c "→ Modo HOST: usando o Chrome do host (CDP ${CDP_PORT})"
-    "${COMPOSE[@]}" --profile host-chrome up -d bot-host
-    ok "UI: http://localhost:${UI_PORT}"
-  else
-    c "→ Modo LOCAL: Chrome dentro do container"
     "${COMPOSE[@]}" up -d bot
-    ok "UI:      http://localhost:${UI_PORT}"
-    ok "noVNC:   http://localhost:${NOVNC_PORT}   (login / CAPTCHA)"
+    ok "UI: http://localhost:${UI_PORT}"
+    c "   (janela real do Chrome: use ./bin/jobbot chrome para abrir)"
+  else
+    c "→ Modo CONTAINER: Chrome dentro do container (noVNC)"
+    "${COMPOSE[@]}" --profile container up -d bot-container
+    ok "UI:    http://localhost:${UI_PORT}"
+    ok "noVNC: http://localhost:${NOVNC_PORT}   (login / CAPTCHA)"
   fi
 }
 
 cmd_down() {
-  c "→ Derrubando (modo local + host)..."
-  "${COMPOSE[@]}" --profile host-chrome down --remove-orphans
+  c "→ Derrubando (modo host + container)..."
+  "${COMPOSE[@]}" --profile container down --remove-orphans
   ok "Feito. (os volumes e o banco foram preservados)"
 }
 
@@ -92,7 +96,7 @@ cmd_status() {
 
 cmd_shell() {
   local cname="auto-apply-bot"
-  docker ps --format '{{.Names}}' | grep -q "^auto-apply-bot-host$" && cname="auto-apply-bot-host"
+  docker ps --format '{{.Names}}' | grep -q "^auto-apply-bot-container$" && cname="auto-apply-bot-container"
   "${COMPOSE[@]}" exec "$cname" bash
 }
 
@@ -106,6 +110,44 @@ cmd_ui() {
   echo "http://localhost:${UI_PORT}"
 }
 
+# Abre o Chrome NATIVO no host, com a porta de CDP liberada.
+#
+# Por que um profile dedicado (--user-data-dir) e obrigatorio: desde o
+# Chrome 136, o navegador recusa depuracao remota no profile padrao (o
+# seu perfil do dia a dia). E o profile padrao ja fica travado pelo Chrome
+# aberto normalmente. Entao: profile dedicado = sessao logada separada,
+# que persiste entre execucoes — e janela REAL, com teclado e mouse.
+cmd_chrome() {
+  local profile="${BOT_CHROME_PROFILE:-$HOME/.chrome-debug-profile}"
+
+  if cdp_do_host_vivo; then
+    ok "Ja existe um Chrome com CDP na porta ${CDP_PORT} — pronto para o bot."
+    return 0
+  fi
+
+  c "→ Abrindo o Chrome (janela real) com CDP na porta ${CDP_PORT}..."
+  mkdir -p "$profile"
+  # shellcheck disable=SC2086
+  setsid google-chrome \
+    --remote-debugging-port="$CDP_PORT" \
+    --user-data-dir="$profile" \
+    --no-first-run \
+    --no-default-browser-check \
+    about:blank >/dev/null 2>&1 &
+
+  for i in $(seq 1 15); do
+    sleep 1
+    if cdp_do_host_vivo; then
+      ok "Chrome pronto (CDP ${CDP_PORT}, profile: $profile)"
+      c "   Faça login nos sites nessa janela. O perfil persiste entre execuções."
+      return 0
+    fi
+  done
+  erro "Chrome não respondeu na porta ${CDP_PORT}."
+  erro "Se a porta estiver ocupada por outro processo, mude BOT_CDP_PORT no .env."
+  return 1
+}
+
 case "${1:-up}" in
   up) shift || true; cmd_up "${1:-auto}" ;;
   down) cmd_down ;;
@@ -113,6 +155,7 @@ case "${1:-up}" in
   status) cmd_status ;;
   shell) cmd_shell ;;
   rebuild) shift || true; cmd_rebuild "${1:-auto}" ;;
+  chrome) cmd_chrome ;;
   ui) cmd_ui ;;
   *) erro "comando desconhecido: $1"; sed -n '2,20p' "$0"; exit 1 ;;
 esac

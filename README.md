@@ -149,30 +149,36 @@ Com `CONTROL_MODE=true` no `.env`, o processo sobe **só a UI** (dashboard) e o 
 cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
 # config/*.json precisam existir (mesmo passo 3 acima)
 
-./bin/jobbot up         # sobe a UI em http://localhost:1717
+./bin/jobbot chrome    # abre o Chrome NATIVO (janela real, teclado real)
+./bin/jobbot up        # sobe o container — ele usa aquele Chrome
+# UI em http://localhost:1717
 ```
 
 O atalho `./bin/jobbot` resolve o resto: escolhe o modo do navegador, sobe o container certo e te imprime a URL. Sem ele, o equivalente é:
 
 ```bash
 docker compose build
-docker compose up -d              # modo local: Chrome no container
+docker compose up -d              # usa o Chrome do host (se estiver no ar)
 ```
+
+**Por que o Chrome do host e não o do container:** o Chrome do container vive num display virtual (Xvfb) e só aparece espelhado via noVNC — sem teclado, sem ergonomia. No host, é o **Chrome de verdade**: janela nativa, teclado, mouse, Extensões, seu bookmarks.
+
+> ⚠️ **O profile do Chrome precisa ser dedicado** (`~/.chrome-debug-profile`): desde o Chrome 136, o navegador recusa depuração remota no profile padrão (o do seu dia a dia) — e ele já fica travado pelo Chrome aberto normalmente. O `./bin/jobbot chrome` cria esse profile na primeira vez; os logins ficam salvos nele para sempre.
 
 Os dois modos de navegador:
 
 | Modo | Comando | Navegador | Login |
 |---|---|---|---|
-| **local** | `./bin/jobbot up --local` | Chrome **dentro** do container | via noVNC: `http://localhost:7900` |
-| **host** | `./bin/jobbot up --host` | o Chrome **que você já tem aberto** | o seu, já feito |
+| **host** (padrão) | `./bin/jobbot up` | o Chrome **que você tem aberto** (janela real) | o seu, no profile dedicado |
+| **container** | `./bin/jobbot up --local` | Chrome **dentro** do container | via noVNC: `http://localhost:7900` |
 
-`./bin/jobbot up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container.
+`./bin/jobbot up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container (com noVNC) — nunca fica sem navegador.
 
 **Modo UI (padrão no Docker):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
 
 **Modo automático (opcional):** `CONTROL_MODE=false` no `.env` volta ao comportamento antigo — o agente roda assim que o container sobe (útil para cron).
 
-**Portas:** todas ficam no `.env` (`BOT_UI_PORT`, `BOT_NOVNC_PORT`, `BOT_CDP_PORT`) — se algo estiver ocupado, mude lá e o compose/atualizador acompanha. A porta CDP **nunca** é publicada: o bot e o Chrome conversam dentro do container (ou via loopback, no modo host).
+**Portas:** todas ficam no `.env` (`BOT_UI_PORT`, `BOT_NOVNC_PORT`, `BOT_CDP_PORT`) — se algo estiver ocupado, mude lá e o compose/atualizador acompanha. A porta CDP do container (9223) é interna e separada da do host (9222), para não disputar a mesma porta.
 
 ---
 
@@ -181,27 +187,29 @@ Os dois modos de navegador:
 O projeto é **docker-first**: uma imagem com Node 22, Chrome headful, Xvfb e noVNC, e um **control server** que transforma o container em uma UI de comando.
 
 ```bash
-./bin/jobbot up        # sobe (auto-detecta o modo)
-./bin/jobbot status    # estado, portas e se a UI responde
-./bin/jobbot logs      # segue o log
-./bin/jobbot down      # derruba (preserva volumes e banco)
+./bin/jobbot chrome     # abre o Chrome nativo (janela real, teclado real)
+./bin/jobbot up         # sobe o container (usa o Chrome do host se existir)
+./bin/jobbot status     # estado, portas e se a UI responde
+./bin/jobbot logs       # segue o log
+./bin/jobbot down       # derruba (preserva volumes e banco)
 ```
 
 Atalhos equivalentes via `make`: `make up`, `make status`, `make logs`, `make down`, `make shell`, `make rebuild`.
 
 | Peça | O que faz |
 |---|---|
-| `bin/jobbot` | **Atalho único**: escolhe o modo (host/local), sobe, derruba, logs, status. Lê as portas do `.env` |
+| `bin/jobbot` | **Atalho único**: abre o Chrome nativo, escolhe o modo (host/container), sobe, derruba, logs, status. Lê as portas do `.env` |
 | `Makefile` | Atalhos `make up` / `make down` / `make logs`… delegando para o script |
 | `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc`/`novnc` + `@playwright/mcp` pré-instalado |
-| `docker/entrypoint.sh` | Sobe Xvfb → noVNC → Chrome headful (perfil em volume) → espera o CDP → executa o bot. ** Cai para o Chrome local** se o Chrome do host não responder |
-| `docker-compose.yml` | Um arquivo só, com os dois serviços: `bot` (local) e `bot-host` (host, via `profiles`). Portas vindas do `.env` |
+| `docker/entrypoint.sh` | Escolhe o navegador (externo → local), sobe Xvfb/noVNC/Chrome quando preciso, **watchdog** mantém o Chrome vivo, e executa o bot/UI |
+| `docker-compose.yml` | Um arquivo só, com os dois serviços: `bot` (host, padrão) e `bot-container` (Chrome no container, via `profiles`). Portas vindas do `.env` |
 | `src/control-server.ts` | UI de comando: `POST /api/start`, `POST /api/stop`, `GET /api/status`, `GET /api/logs` |
 
 Detalhes que importam:
+- **Navegador persistente**: o Chrome fica de pé entre runs (perfil em volume) — o login nunca se perde e nenhum run paga o custo de subir navegador.
+- **Watchdog**: se o Chrome cair, ele volta sozinho em ~5s.
+- **Gate de run**: sem navegador respondendo, o run é recusado com motivo — nenhum token gasto com execução fadada.
 - **uid alinhado**: o container roda como `node` (uid 1000) — o mesmo do host — então os bind-mounts (`curriculos/`, `config/`) continuam graváveis.
-- **Perfil persistente**: o volume `chrome-profile` guarda a sessão do Chrome entre runs (logins não somem).
-- **Resiliência**: Chrome do host fechado → o container sobe o Chrome dele; profile travado por container anterior → o entrypoint limpa os singletons.
 - **Custo dinâmico**: quando o provedor reporta o custo real (OpenRouter), o dashboard mostra o valor exato, não uma estimativa.
 - **`CONTROL_MODE=false`** volta ao auto-run, para uso com cron.
 

@@ -24,15 +24,20 @@ set -e
 CHROME_PROFILE="${CHROME_PROFILE:-/home/node/.chrome-profile}"
 CDP_ENDPOINT="${CDP_ENDPOINT:-http://127.0.0.1:9222}"
 CDP_PORT="${CDP_PORT:-9222}"
+# Porta do Chrome PROPRIO do container. Diferente da do host de propósito:
+# no modo host (network_mode: host) o 127.0.0.1 é compartilhado, e o Chrome do
+# container não pode roubar a porta do Chrome do usuário.
+CDP_LOCAL_PORT="${CDP_LOCAL_PORT:-9223}"
 START_LOCAL_CHROME="${START_LOCAL_CHROME:-auto}"
 
-if [ "$START_LOCAL_CHROME" = "auto" ]; then
-  case "$CDP_ENDPOINT" in
-    http://127.0.0.1:*|http://localhost:*) MODO_CHROME="local" ;;
-    *) MODO_CHROME="remoto" ;;
-  esac
+if [ "$START_LOCAL_CHROME" = "true" ]; then
+  MODO_CHROME="local"
+elif [ "$START_LOCAL_CHROME" = "false" ]; then
+  MODO_CHROME="remoto"
 else
-  [ "$START_LOCAL_CHROME" = "true" ] && MODO_CHROME="local" || MODO_CHROME="remoto"
+  # "auto": tenta o Chrome de $CDP_ENDPOINT primeiro (pode ser o do host via
+  # network_mode: host) e só sobe o próprio se ele não responder.
+  MODO_CHROME="auto"
 fi
 
 cdp_responde() {
@@ -42,7 +47,7 @@ cdp_responde() {
 # Sobe o Chrome headful. O perfil fica num volume: o lock de sessão (cookies,
 # logins) sobrevive a reinícios do container — é o que garante não deslogar.
 start_chrome() {
-  echo "[entrypoint] Chrome headful (perfil: $CHROME_PROFILE)..."
+  echo "[entrypoint] Chrome headful (perfil: $CHROME_PROFILE, porta $CDP_LOCAL_PORT)..."
   mkdir -p "$CHROME_PROFILE"
   # Singleton obsoleto: o Chrome trava o perfil com SingletonLock/Socket e, se o
   # container anterior morreu sem limpar, o novo Chrome recusa abrir ("profile
@@ -50,7 +55,7 @@ start_chrome() {
   # pertence só ao Chrome do container, removemos os arquivos órfãos.
   rm -f "$CHROME_PROFILE"/SingletonLock "$CHROME_PROFILE"/SingletonCookie "$CHROME_PROFILE"/SingletonSocket
   google-chrome-stable \
-    --remote-debugging-port="$CDP_PORT" \
+    --remote-debugging-port="$CDP_LOCAL_PORT" \
     --remote-debugging-address=127.0.0.1 \
     --user-data-dir="$CHROME_PROFILE" \
     --no-sandbox \
@@ -80,7 +85,8 @@ watchdog_chrome() {
   done
 }
 
-if [ "$MODO_CHROME" = "local" ]; then
+# Sobe a stack gráfica local (display virtual + noVNC) e o Chrome próprio.
+iniciar_stack_local() {
   echo "[entrypoint] display virtual :99..."
   Xvfb :99 -screen 0 1280x1024x24 >/tmp/xvfb.log 2>&1 &
 
@@ -95,37 +101,48 @@ if [ "$MODO_CHROME" = "local" ]; then
     echo "[entrypoint] AVISO: noVNC indisponivel (login remoto desativado)"
   fi
 
+  CDP_ENDPOINT="http://127.0.0.1:$CDP_LOCAL_PORT"
+  export CDP_ENDPOINT   # o app (bot + UI) aponta para o Chrome local
+  export BOT_HAS_LOCAL_CHROME=true
+
   start_chrome
   watchdog_chrome &
-  # A UI usa essa flag para oferecer o link do navegador remoto (noVNC).
-  export BOT_HAS_LOCAL_CHROME=true
-else
-  # Modo remoto: espera o Chrome do host. Se ele não responder, cai para o
-  # Chrome local em vez de deixar o container morto (degrada, mas funciona).
-  echo "[entrypoint] usando o Chrome EXTERNO (CDP: $CDP_ENDPOINT) — sem Chrome local"
-  echo "[entrypoint] aguardando CDP externo por 20s..."
-  for i in $(seq 1 20); do
-    cdp_responde && break
-    sleep 1
-  done
-  if cdp_responde; then
-    echo "[entrypoint] Chrome externo conectado"
-  else
-    echo "[entrypoint] AVISO: Chrome externo nao respondeu em 20s — iniciando Chrome LOCAL (perfil proprio, sem seus logins)"
-    MODO_CHROME="local"
-    echo "[entrypoint] display virtual :99..."
-    Xvfb :99 -screen 0 1280x1024x24 >/tmp/xvfb.log 2>&1 &
-    x11vnc -display :99 -forever -shared -rfbport 5900 -nopw -quiet -bg -o /tmp/x11vnc.log || true
-    if [ -x /usr/share/novnc/utils/novnc_proxy ]; then
-      /usr/share/novnc/utils/novnc_proxy --vnc localhost:5900 --listen 0.0.0.0:7900 >/tmp/novnc.log 2>&1 &
+}
+
+case "$MODO_CHROME" in
+  local)
+    iniciar_stack_local
+    ;;
+  remoto)
+    # Modo remoto: exige o Chrome externo (CDP de $CDP_ENDPOINT).
+    echo "[entrypoint] usando o Chrome EXTERNO (CDP: $CDP_ENDPOINT) — sem Chrome local"
+    echo "[entrypoint] aguardando CDP externo por 20s..."
+    for i in $(seq 1 20); do
+      cdp_responde && break
+      sleep 1
+    done
+    if ! cdp_responde; then
+      echo "[entrypoint] ERRO: Chrome externo nao respondeu em 20s ($CDP_ENDPOINT)"
+      exit 1
     fi
-    start_chrome
-    watchdog_chrome &
-    CDP_ENDPOINT="http://127.0.0.1:$CDP_PORT"
-    export CDP_ENDPOINT   # o app (bot + UI) precisa apontar para o Chrome local
-    export BOT_HAS_LOCAL_CHROME=true
-  fi
-fi
+    echo "[entrypoint] Chrome externo conectado"
+    ;;
+  auto)
+    # Preferência: o Chrome de $CDP_ENDPOINT (pode ser o do host, com janela
+    # real). Se não responder, sobe o Chrome próprio do container.
+    echo "[entrypoint] verificando Chrome externo (CDP: $CDP_ENDPOINT)..."
+    for i in $(seq 1 5); do
+      cdp_responde && break
+      sleep 1
+    done
+    if cdp_responde; then
+      echo "[entrypoint] usando o Chrome EXTERNO (CDP: $CDP_ENDPOINT)"
+    else
+      echo "[entrypoint] Chrome externo indisponivel — iniciando o Chrome LOCAL (perfil proprio, sem seus logins)"
+      iniciar_stack_local
+    fi
+    ;;
+esac
 
 echo "[entrypoint] aguardando CDP em $CDP_ENDPOINT..."
 for i in $(seq 1 60); do
