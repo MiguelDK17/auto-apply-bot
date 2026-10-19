@@ -6,6 +6,7 @@ import { conectarPlaywrightMCP, desconectarMCP, verificarChromeCDP } from './mcp
 import { inicializarBanco, fecharBanco, registrarExecucao, contarCandidaturasHoje, listarCandidaturas, obterEstatisticas } from './database.js';
 import { executarAgente } from './agente.js';
 import { iniciarDashboard, pararDashboard } from './dashboard.js';
+import { iniciarControlServer } from './control-server.js';
 import { inicializarLogger, log } from './logger.js';
 import { configurarTelegram, notificarResumo, notificarErro } from './notificacoes.js';
 import { configurarEmail, enviarRelatorioEmail, gerarHTMLRelatorio } from './email.js';
@@ -53,6 +54,7 @@ function validarEnv(): AgenteConfig {
     scoreMinimo: parseInt(process.env.SCORE_MINIMO || '6', 10),
     custoMaxUsd: parseFloat(process.env.CUSTO_MAX_USD || '0'),
     dashboardPort: parseInt(process.env.DASHBOARD_PORT || '3000', 10),
+    dashboardHost: process.env.DASHBOARD_HOST || '127.0.0.1',
     // Telegram
     telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
     telegramChatId: process.env.TELEGRAM_CHAT_ID || '',
@@ -94,8 +96,11 @@ async function executarFluxoPrincipal(config: AgenteConfig): Promise<void> {
     return;
   }
 
-  // Inicia dashboard web
-  iniciarDashboard(config.dashboardPort);
+  // Inicia dashboard web (só se habilitado — no modo control server quem
+  // serve a UI é o control server, e o filho do run não pode bindar a porta).
+  if (process.env.DASHBOARD_ENABLED !== 'false') {
+    iniciarDashboard(config.dashboardPort, config.dashboardHost);
+  }
 
   // Conecta ao Playwright MCP (que conecta ao Chrome).
   // Antes de subir o MCP, valida que o Chrome esta acessivel via CDP: o
@@ -192,6 +197,17 @@ async function main() {
 
   // Valida ambiente
   const config = validarEnv();
+
+  // MODO CONTROL SERVER: o container sobe SÓ a UI (dashboard + botões) e
+  // NÃO roda o agente. O run parte de um clique em "Iniciar bot" (ou
+  // POST /api/start). Evita gastar cota sem ninguém pedir.
+  if (process.env.CONTROL_MODE === 'true') {
+    log('INFO', `Modelo agente: ${config.agentLlmModel} (${config.agentLlmBaseUrl})`);
+    log('INFO', `Modo: CONTROL SERVER — o bot só roda quando você pedir (UI em http://localhost:${config.dashboardPort})`);
+    iniciarControlServer(config.dashboardPort, config.dashboardHost);
+    return; // mantém o processo vivo servindo a UI
+  }
+
   log('INFO', `Modelo agente: ${config.agentLlmModel} (${config.agentLlmBaseUrl})`);
   log('INFO', `CDP: ${config.cdpEndpoint}`);
   log('INFO', `Limite diario: ${config.limiteDiario}`);

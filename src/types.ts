@@ -79,7 +79,10 @@ export interface AgenteConfig {
   delayMax: number;
   dryRun: boolean;
   scoreMinimo: number;
+  // Dashboard (porta do servidor web local)
   dashboardPort: number;
+  // Host de bind do dashboard (127.0.0.1 local; 0.0.0.0 no Docker p/ port-mapping)
+  dashboardHost: string;
   // Circuito de parada por custo (0 = desativado)
   custoMaxUsd: number;
   // Telegram (opcional)

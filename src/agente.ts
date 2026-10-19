@@ -101,6 +101,13 @@ Antes de se candidatar a QUALQUER vaga, SEMPRE use a tool "pontuar_vaga" passand
 - NUNCA insira dados falsos ou inventados
 - Aguarde SEMPRE entre acoes (tool aguardar) para simular comportamento humano
 
+## PAGINA DE LOGIN = SESSAO EXPIREDADA (IMPORTANTE)
+Se o navegador cair numa pagina de login ("Sign in", "Log in", "Entre com sua conta"):
+- NAO tente preencher formulario de login, NAO clique em campos de usuario/senha.
+- Use reportar_falha com codigo "sessao_expirada" e PULE para o proximo site.
+- O sistema detecta a pagina de login sozinho e penaliza retentativas, mas
+  so a sua chamada de reportar_falha encerra o site.
+
 ## TOLERANCIA A ERROS DE SELETOR (ANTI-LOOP — LEIA COM ATENCAO)
 Erros de seletor/elemento ("ERRO_TOOL", "selector", "locator", "element not found",
 "strict mode violation", "not visible", "not attached") significam que a pagina mudou
@@ -308,6 +315,29 @@ export function montarToolsAgente(
 const PADRAO_ERRO_SELETOR =
   /selector|seletor|locator|strict mode|element.{0,30}not found|no.{0,20}element found|elemento n[aã]o encontrado|invalid selector|not attached|not visible|outside of the viewport/i;
 
+// Página de login: URL de autenticação + marcador textual. Os dois juntos
+// evitam falso positivo (ex.: um link "Sign in" solto na navegação de uma
+// página logada).
+const RE_URL_LOGIN =
+  /https?:\/\/[^\s)\]]*(?:\/login|\/signin|\/sign-in|\/checkpoint\/login|\/auth\/|\/accounts\/login|\/uas\/login)/i;
+const RE_MARCADOR_LOGIN =
+  /\b(sign in|log in|login|entrar|iniciar sess[aã]o|fazer login|entre com sua conta)\b/i;
+
+/**
+ * Detecta se a tool devolveu uma PÁGINA DE LOGIN (sessão expirada ou
+ * nunca logado).
+ *
+ * Por que existe: sem isso, o agente passa as 100 iterações tentando
+ * "navegar" numa página de login —NAVEGAR de verdade, preencher formulário
+ * de login, tirar screenshot — queimando cota sem qualquer progresso.
+ * Com a detecção, o loop injeta a instrução de reportar `sessao_expirada`
+ * (falha permanente) e o agente pula para o próximo site.
+ */
+export function ehPaginaDeLogin(texto: string): boolean {
+  const janela = texto.slice(0, 2000);
+  return RE_URL_LOGIN.test(janela) && RE_MARCADOR_LOGIN.test(janela);
+}
+
 /**
  * Detecta se o resultado de uma tool indica falha de seletor/CSS ou elemento
  * não encontrado — o caso que mais causava loops infinitos de retentativa
@@ -397,6 +427,11 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
   // Assinatura (tool+args) → nº de falhas de seletor consecutivas. Evita que o
   // modelo queime a cota retentando o mesmo elemento indefinidamente.
   const falhasSeletor = new Map<string, number>();
+  // Mesma ideia, mas para QUALQUER chamada repetida sem efeito (o modelo
+  // reexecutando a mesma tool com os mesmos argumentos em sequência).
+  const chamadasRepetidas = new Map<string, number>();
+  // Quantas vezes o navegador devolveu página de login nesta execução.
+  let paginasLogin = 0;
 
   let iteracao = 0;
   let respostaFinal = '';
@@ -528,20 +563,48 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
 
         log('TOOL', `Resultado: ${resultado.substring(0, 150)}...`);
 
+        // Guarda anti-loop genérica: a MESMA chamada repetida não traz
+        // progresso e só queima cota. A partir da 3ª repetição, o aviso entra
+        // no resultado para o modelo avançar.
+        const assinatura = `${toolName}:${JSON.stringify(toolArgs).substring(0, 120)}`;
+        const repeticoes = (chamadasRepetidas.get(assinatura) || 0) + 1;
+        chamadasRepetidas.set(assinatura, repeticoes);
+        if (repeticoes >= 3) {
+          resultado +=
+            `\n\nAVISO_DO_SISTEMA: esta chamada ja foi repetida ${repeticoes}x sem resultado. ` +
+            `NAO repita. Avance para a proxima acao, vaga ou site.`;
+        }
+
+        // Sessão expirada / nunca logado: o navegador caiu numa página de
+        // login. Guard determinístico — o prompt sozinho não bastou (o modelo
+        // gastava as 100 iterações tentando usar a página de login).
+        if (ehPaginaDeLogin(resultado)) {
+          paginasLogin++;
+          resultado +=
+            `\n\nAVISO_DO_SISTEMA: o navegador esta numa PAGINA DE LOGIN (sessao expirada ou nunca logado). ` +
+            `NAO tente preencher formularios nem clicar em campos de login. ` +
+            `Use reportar_falha com codigo "sessao_expirada" (url_vaga = URL atual) e PULE para o proximo site.`;
+          if (paginasLogin >= 3) {
+            resultado +=
+              ` ATENCAO: ${paginasLogin} paginas de login em sequencia — a sessao esta quebrada. ` +
+              `PULA o site agora (reportar_falha "sessao_expirada").`;
+          }
+        }
+
         // Resiliência a seletores: se a tool falhou por seletor/elemento não
         // encontrado, anexa orientação explícita ao resultado para o modelo NÃO
         // retentar o mesmo elemento — e escala o aviso a cada repetição.
         if (ehErroDeSeletor(resultado)) {
-          const assinatura = `${toolName}:${JSON.stringify(toolArgs).substring(0, 120)}`;
-          const repeticoes = (falhasSeletor.get(assinatura) || 0) + 1;
-          falhasSeletor.set(assinatura, repeticoes);
+          const assinaturaSeletor = `${toolName}:${JSON.stringify(toolArgs).substring(0, 120)}`;
+          const repeticoesSeletor = (falhasSeletor.get(assinaturaSeletor) || 0) + 1;
+          falhasSeletor.set(assinaturaSeletor, repeticoesSeletor);
           resultado +=
-            `\n\nAVISO_DO_SISTEMA: esta acao falhou por seletor/elemento nao encontrado (${repeticoes}x). ` +
+            `\n\nAVISO_DO_SISTEMA: esta acao falhou por seletor/elemento nao encontrado (${repeticoesSeletor}x). ` +
             `NAO repita a mesma chamada. Use browser_snapshot para obter referencias atualizadas e tente outra estrategia. ` +
             `Se falhar de novo, use reportar_falha (codigo "elemento_nao_encontrado") e avance para a proxima vaga.`;
-          if (repeticoes >= 3) {
+          if (repeticoesSeletor >= 3) {
             resultado +=
-              ` ATENCAO: ${repeticoes} falhas identicas — DESISTA deste elemento agora ` +
+              ` ATENCAO: ${repeticoesSeletor} falhas identicas — DESISTA deste elemento agora ` +
               `(reportar_falha + proxima vaga). Continuar retentando queima a cota de requisicoes sem progresso.`;
           }
         }

@@ -1,0 +1,49 @@
+# auto-apply-bot — pilha completa (bot + Chrome headful + noVNC).
+#
+# Portas (host → container):
+#   1717 → 3000  dashboard (1717 em referência a MiguelDK17)
+#   7900 → 7900  noVNC — abra no browser para login inicial e CAPTCHAs manuais
+# A porta CDP (9222) NÃO é mapeada de propósito: Chrome e bot conversam
+# dentro do container; expor o controle do navegador para fora seria risco.
+#
+# Uso:
+#   Execução única (manual):  docker compose run --rm bot
+#   Residente (cron, futuro): docker compose up -d   (com CRON_ATIVO=true no .env)
+#   Ver o navegador:          http://localhost:7900
+#   Dashboard:                http://localhost:1717
+
+services:
+  bot:
+    build: .
+    image: auto-apply-bot:latest
+    ports:
+      - "1717:3000"
+      - "7900:7900"
+    env_file:
+      - .env
+    environment:
+      # Bot e Chrome estão no mesmo container: o default (127.0.0.1:9222) já vale.
+      # Dashboard precisa bind 0.0.0.0 para o port-mapping alcançar (ver dashboard.ts).
+      DASHBOARD_HOST: 0.0.0.0
+      # MODO UI: o container sobe SÓ o control server (dashboard + botões).
+      # O agente NÃO roda sozinho — você clica em "Iniciar bot".
+      # (CONTROL_MODE=false volta ao comportamento antigo: roda ao subir)
+      CONTROL_MODE: "true"
+    volumes:
+      # Perfil do Chrome (logins persistem entre runs — o equivalente
+      # containerizado do ~/.chrome-debug-profile do setup local).
+      - chrome-profile:/home/bot/.chrome-profile
+      # Estado e artefatos do bot.
+      - bot-data:/app/data
+      - bot-logs:/app/logs
+      - bot-shots:/app/screenshots
+      # Config e currículos vêm do host (dados pessoais, fora da imagem).
+      - ./config:/app/config:ro
+      - ./curriculos:/app/curriculos
+    # Sem restart: always por enquanto — cron ainda não é prioridade.
+
+volumes:
+  chrome-profile:
+  bot-data:
+  bot-logs:
+  bot-shots:

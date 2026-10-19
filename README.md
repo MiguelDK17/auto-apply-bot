@@ -131,6 +131,34 @@ DRY_RUN=true npm start
 npm start
 ```
 
+### 5b. Via Docker (alternativa — pilha completa)
+
+```bash
+cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
+# config/*.json precisam existir (mesmo passo 3 acima)
+
+docker compose build
+docker compose run --rm bot        # execução única (manual)
+```
+
+O container inclui bot + Chrome headful + noVNC. Portas: `1717` (dashboard) e `7900` (navegador remoto — abra no browser para fazer login nos sites e resolver CAPTCHAs; o perfil persiste em volume Docker). A porta CDP (9222) fica interna ao container de propósito. `DRY_RUN=true` continua valendo para o primeiro teste.
+
+**Modo UI (padrão):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
+
+**Modo automático (opcional):** `CONTROL_MODE=false` no `.env` volta ao comportamento antigo — o agente roda assim que o container sobe (útil para cron).
+
+**Modo A — Chrome dentro do container (padrão):** o container sobe o próprio Chrome, com perfil persistente em volume. Você faz login uma vez via `http://localhost:7900` (noVNC) e as sessões ficam salvas.
+
+**Modo B — usar o Chrome que você já tem aberto (logado):**
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml run --rm bot
+```
+
+No modo B o container compartilha a rede do host (`network_mode: host`) e conversa com o Chrome do host via `127.0.0.1:9222` — ou seja, o bot age no navegador onde você **já está logado** (LinkedIn, Gupy, etc.), sem refazer login. O dashboard continua em `http://localhost:1717`.
+
+Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugging-port=9222`) e `DRY_RUN=true` até você confiar no fluxo — neste modo o bot pilota seu navegador real.
+
 ---
 
 ## ⚙️ Configuração Detalhada
@@ -447,7 +475,7 @@ auto-apply-bot/
 - [x] ~~Mensagem automática para recrutadores~~
 - [x] ~~Multi-LLM (Gemini + Ollama local como fallback)~~
 - [x] ~~Anonimização de dados antes de enviar ao LLM~~
-- [ ] Docker support
+- [x] ~~Docker support (bot + Chrome headful + noVNC via compose)~~
 - [x] ~~Tracking de custo de tokens~~
 
 ---

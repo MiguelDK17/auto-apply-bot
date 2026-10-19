@@ -4,6 +4,7 @@ import {
   converterMcpToolParaOpenAI,
   montarToolsAgente,
   ehErroDeSeletor,
+  ehPaginaDeLogin,
   extrairTextoMcp,
   criarClientAgente,
 } from '../src/agente';
@@ -17,13 +18,41 @@ function configFake(over: Partial<AgenteConfig> = {}): AgenteConfig {
     agentLlmModel: 'google/gemini-2.0-flash-001',
     geminiApiKey: '', geminiModel: '', cdpEndpoint: 'http://localhost:9222',
     limiteDiario: 10, maxPorExecucao: 5, delayMin: 1, delayMax: 2, dryRun: true, scoreMinimo: 6,
-    custoMaxUsd: 0, dashboardPort: 3000,
+    custoMaxUsd: 0, dashboardPort: 3000, dashboardHost: '127.0.0.1',
     telegramBotToken: '', telegramChatId: '', smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '',
     emailDestinatario: '', cronAtivo: false, cronHorario: '09:00',
     llmAuxProvider: 'gemini', llmAuxModel: 'gemini-2.5-flash', ollamaUrl: '', openaiApiKey: '', openaiBaseUrl: '',
     ...over,
   };
 }
+
+describe('ehPaginaDeLogin — detecção de sessão expirada', () => {
+  it('detecta a página de login do LinkedIn (URL + marcador)', () => {
+    // Cenário: saída real do browser_tabs com o Chrome deslogado
+    const resultado =
+      '### Result\n- 0: (current) [LinkedIn Login, Sign in | LinkedIn](https://www.linkedin.com/login/?session_redirect=https%3A%2F%2Fwww.linkedin.com%2Ffeed%2F)';
+
+    // Ação + Validação
+    expect(ehPaginaDeLogin(resultado)).toBe(true);
+  });
+
+  it('detecta página de login de outros portais', () => {
+    // Cenário + Ação + Validação
+    expect(ehPaginaDeLogin('Page URL: https://portal.gupy.io/signin\n- text: Entre com sua conta')).toBe(true);
+    expect(ehPaginaDeLogin('https://vagas.com.br/login - Fazer login')).toBe(true);
+  });
+
+  it('não confunde uma listagem normal com página de login', () => {
+    // Cenário: página de vagas com link de login solto na navegação
+    const listagem =
+      'Page URL: https://portal.gupy.io/job-search/term=dev\n' +
+      '- link "Sign in" [ref=3]\n' +
+      '- heading "Vaga Desenvolvedor Backend" [ref=12]';
+
+    // Ação + Validação
+    expect(ehPaginaDeLogin(listagem)).toBe(false);
+  });
+});
 
 describe('teto de rate limit — anti-espera-infinita', () => {
   it('limita a 5 rate limits consecutivos antes de parar com aviso no Telegram', () => {

@@ -1,7 +1,14 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { createRequire } from 'module';
+import { readFileSync } from 'fs';
+import { existsSync } from 'fs';
+import path from 'path';
 
 let mcpClient: Client | null = null;
+
+// Versão pinada do MCP (mesma do package.json — sem caret de propósito).
+export const PLAYWRIGHT_MCP_VERSION = '0.0.76';
 
 /**
  * Verifica, ANTES de subir o agente, que o Chrome esta acessivel via CDP.
@@ -57,17 +64,8 @@ export async function verificarChromeCDP(cdpEndpoint: string, timeoutMs = 3000):
 export async function conectarPlaywrightMCP(cdpEndpoint: string): Promise<Client> {
   console.log(`[MCP] Conectando ao Playwright MCP via CDP: ${cdpEndpoint}`);
 
-  // Versão pinada (não @latest): baixar a versão mais recente a cada execução é
-  // um vetor de supply chain — código novo rodaria com acesso ao seu navegador/
-  // CDP sem revisão. Atualize a versão conscientemente quando desejar.
-  const transport = new StdioClientTransport({
-    command: 'npx',
-    args: [
-      '@playwright/mcp@0.0.76',
-      '--cdp-endpoint',
-      cdpEndpoint,
-    ],
-  });
+  const { command, args } = montarComandoMCP(cdpEndpoint);
+  const transport = new StdioClientTransport({ command, args });
 
   mcpClient = new Client({
     name: 'job-bot',
@@ -97,4 +95,48 @@ export function getMCPClient(): Client {
     throw new Error('MCP Client nao inicializado. Chame conectarPlaywrightMCP() primeiro.');
   }
   return mcpClient;
+}
+
+/**
+ * Monta o comando de spawn do Playwright MCP.
+ *
+ * Ordem de preferência:
+ * 1. `PLAYWRIGHT_MCP_BIN` (imagem Docker — binário pré-instalado, sem download);
+ * 2. `@playwright/mcp` resolvido do `node_modules` local (dependência do projeto);
+ * 3. `npx @playwright/mcp@<pin>` (fallback — baixa da rede, como antes).
+ *
+ * A versão é sempre pinada (nunca @latest): baixar código novo a cada execução
+ * é um vetor de supply chain com acesso ao seu navegador/CDP.
+ */
+export function montarComandoMCP(
+  cdpEndpoint: string,
+  overrideBin?: string | null,
+): { command: string; args: string[] } {
+  const binLocal = overrideBin !== undefined ? overrideBin : (process.env.PLAYWRIGHT_MCP_BIN || resolverBinLocal());
+
+  if (binLocal && existsSync(binLocal)) {
+    return { command: process.execPath, args: [binLocal, '--cdp-endpoint', cdpEndpoint] };
+  }
+
+  return {
+    command: 'npx',
+    args: [`@playwright/mcp@${PLAYWRIGHT_MCP_VERSION}`, '--cdp-endpoint', cdpEndpoint],
+  };
+}
+
+/** Resolve o binário do `@playwright/mcp` instalado como dependência (ou null). */
+function resolverBinLocal(): string | null {
+  try {
+    const requireLocal = createRequire(import.meta.url);
+    const pkgPath = requireLocal.resolve('@playwright/mcp/package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as {
+      bin?: string | Record<string, string>;
+    };
+    const rel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.['playwright-mcp'];
+    if (!rel) return null;
+    const full = path.join(path.dirname(pkgPath), rel);
+    return existsSync(full) ? full : null;
+  } catch {
+    return null;
+  }
 }

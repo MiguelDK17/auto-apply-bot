@@ -24,7 +24,14 @@ export function sanitizarUrl(url: unknown): string {
   return /^https?:\/\//i.test(s) ? escaparHtml(s) : '#';
 }
 
-function gerarHTML(): string {
+/** Estado do painel de controle (opcional — só no modo control server). */
+export interface ControleUI {
+  ativo: boolean;
+  rodando: boolean;
+  dryRun: boolean;
+}
+
+export function gerarHTML(controle?: ControleUI): string {
   const stats = obterEstatisticas();
   const candidaturas = listarCandidaturas(100);
 
@@ -76,12 +83,13 @@ function gerarHTML(): string {
       <div class="stat-sub">Marque desfechos com "npm run resultado &lt;id&gt; &lt;resultado&gt;" para ativar as metricas de retorno.</div>
     </div>`;
 
+  const painelControle = controle?.ativo ? gerarPainelControle(controle) : '';
+
   return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="refresh" content="30">
 <title>Job Bot - Dashboard</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -106,10 +114,22 @@ function gerarHTML(): string {
   .status.aplicado { background: #166534; color: #4ade80; }
   .status.dry-run { background: #1e40af; color: #93c5fd; }
   .empty { text-align: center; padding: 48px; color: #64748b; }
+  .panel { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .btn { border: 0; border-radius: 10px; padding: 12px 22px; font-size: 15px; font-weight: 600; cursor: pointer; color: #0f172a; }
+  .btn.start { background: #38bdf8; }
+  .btn.stop { background: #f87171; color: #fff; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .chip.on { background: #166534; color: #4ade80; }
+  .chip.off { background: #475569; color: #cbd5e1; }
+  .log { background: #0b1220; border-radius: 12px; padding: 16px; max-height: 340px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; color: #cbd5e1; }
+  .label { font-size: 13px; color: #94a3b8; }
 </style>
 </head>
 <body>
   <h1>Job Bot - Dashboard</h1>
+
+  ${painelControle}
 
   <div class="stats">
     <div class="stat-card">
@@ -149,7 +169,77 @@ function gerarHTML(): string {
 </html>`;
 }
 
-export function iniciarDashboard(port: number): void {
+/** Painel de controle (botões de iniciar/parar + log ao vivo). */
+function gerarPainelControle(controle: ControleUI): string {
+  return `
+  <div class="panel">
+    <button class="btn start" id="btnStart">▶ Iniciar bot</button>
+    <button class="btn stop" id="btnStop" disabled>⏹ Parar</button>
+    <label class="label">
+      <input type="checkbox" id="chkDryRun" ${controle.dryRun ? 'checked' : ''}> dry-run (simula, não envia)
+    </label>
+    <span class="chip ${controle.rodando ? 'on' : 'off'}" id="chipEstado">${controle.rodando ? 'RODANDO' : 'PARADO'}</span>
+    <span class="label" id="infoCusto"></span>
+  </div>
+  <div class="log" id="logBox">carregando log…</div>
+  <script>
+    const chip = document.getElementById('chipEstado');
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+    const chkDry = document.getElementById('chkDryRun');
+    const logBox = document.getElementById('logBox');
+    const infoCusto = document.getElementById('infoCusto');
+    let ultimoRodando = ${controle.rodando ? 'true' : 'false'};
+
+    async function post(url, body) {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      return r.json();
+    }
+
+    btnStart.addEventListener('click', async () => {
+      btnStart.disabled = true;
+      await post('/api/start', { dryRun: chkDry.checked });
+      setTimeout(atualizar, 400);
+    });
+    btnStop.addEventListener('click', async () => {
+      btnStop.disabled = true;
+      await post('/api/stop', {});
+      setTimeout(atualizar, 400);
+    });
+
+    async function atualizar() {
+      try {
+        const s = await (await fetch('/api/status')).json();
+        chip.textContent = s.rodando ? 'RODANDO' : 'PARADO';
+        chip.className = 'chip ' + (s.rodando ? 'on' : 'off');
+        btnStart.disabled = s.rodando;
+        btnStop.disabled = !s.rodando;
+        if (s.ultimoCusto !== null && s.ultimoCusto !== undefined) {
+          infoCusto.textContent = 'último custo: $' + s.ultimoCusto.toFixed(4);
+        }
+        // Terminou um run: recarrega a página para atualizar a tabela.
+        if (ultimoRodando && !s.rodando) { location.reload(); return; }
+        ultimoRodando = s.rodando;
+
+        const l = await (await fetch('/api/logs')).json();
+        if (l.linhas && l.linhas.length) {
+          logBox.textContent = l.linhas.slice(-120).join('\\n');
+          logBox.scrollTop = logBox.scrollHeight;
+        }
+      } catch (e) {
+        logBox.textContent = 'erro ao consultar status: ' + e;
+      }
+    }
+    atualizar();
+    setInterval(atualizar, 2000);
+  </script>`;
+}
+
+export function iniciarDashboard(port: number, host = '127.0.0.1'): void {
   // Idempotente: no modo cron não reabrimos o servidor a cada execução.
   if (server) return;
 
@@ -167,9 +257,11 @@ export function iniciarDashboard(port: number): void {
     server = null;
   });
 
-  // Bind só em localhost: não expõe o histórico de candidaturas na rede.
-  srv.listen(port, '127.0.0.1', () => {
-    log('INFO', `Dashboard rodando em http://localhost:${port}`);
+  // Por padrão, bind só em localhost: não expõe o histórico de candidaturas
+  // na rede. No Docker, DASHBOARD_HOST=0.0.0.0 permite o port-mapping
+  // (1717→3000) — a exposição continua controlada pelo mapeamento de portas.
+  srv.listen(port, host, () => {
+    log('INFO', `Dashboard rodando em http://${host}:${port}`);
   });
 
   server = srv;

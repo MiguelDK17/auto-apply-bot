@@ -1,0 +1,15 @@
+# Build context enxuto: nada pessoal ou gerado vai para a imagem.
+node_modules/
+dist/
+.git/
+.env
+logs/
+data/
+screenshots/
+# Config pessoal vai por bind mount (./config:/app/config:ro) — nunca na imagem.
+config/
+curriculos/
+.playwright-mcp/
+*.png
+coverage/
+*.log
