@@ -11,6 +11,15 @@
 #   ./bin/jobbot rebuild     reconstrói a imagem e sobe de novo
 #   ./bin/jobbot ui          só imprime a URL da UI
 #
+# Watcher (abre o Chrome sozinho quando o container sobe):
+#   ./bin/jobbot watch install   instala como serviço do systemd (1x)
+#   ./bin/jobbot watch start     liga o serviço
+#   ./bin/jobbot watch stop      pausa
+#   ./bin/jobbot watch status    estado do serviço
+#   ./bin/jobbot watch logs      log do watcher
+#   ./bin/jobbot watch uninstall desinstala
+#   ./bin/jobbot watch run       roda em foreground (Ctrl+C sai)
+#
 # As portas ficam no .env (BOT_UI_PORT, BOT_NOVNC_PORT, BOT_CDP_PORT).
 set -euo pipefail
 
@@ -146,6 +155,50 @@ cmd_ui() {
   echo "http://localhost:${UI_PORT}"
 }
 
+# ========== WATCHER (abre o Chrome quando o container sobe) ==========
+
+WATCH_UNIT="jobbot-watch"
+WATCH_DIR="${HOME}/.config/systemd/user"
+WATCH_FILE="${WATCH_DIR}/${WATCH_UNIT}.service"
+
+cmd_watch() {
+  local sub="${1:-help}"
+  shift || true
+
+  case "$sub" in
+    install)
+      mkdir -p "$WATCH_DIR"
+      # O unit aponta para o próprio script (caminho absoluto do usuário).
+      sed "s|%h/auto-apply-bot|$(pwd)|g" bin/jobbot-watch.service > "$WATCH_FILE"
+      systemctl --user daemon-reload
+      systemctl --user enable --now "$WATCH_UNIT"
+      ok "Watcher instalado e ativo."
+      c "   status:  ./bin/jobbot watch status"
+      c "   desinstalar: ./bin/jobbot watch uninstall"
+      ;;
+    uninstall)
+      systemctl --user disable --now "$WATCH_UNIT" 2>/dev/null || true
+      rm -f "$WATCH_FILE"
+      systemctl --user daemon-reload 2>/dev/null || true
+      ok "Watcher removido."
+      ;;
+    start)   systemctl --user start "$WATCH_UNIT" && ok "Watcher ligado." ;;
+    stop)    systemctl --user stop "$WATCH_UNIT" && ok "Watcher pausado." ;;
+    restart) systemctl --user restart "$WATCH_UNIT" && ok "Watcher reiniciado." ;;
+    status)
+      if systemctl --user is-active --quiet "$WATCH_UNIT"; then
+        ok "Watcher ATIVO (o Chrome abre junto com o container)"
+      else
+        warn "Watcher inativo — use './bin/jobbot watch install' para ativar"
+      fi
+      systemctl --user --no-pager status "$WATCH_UNIT" 2>/dev/null | head -8 || true
+      ;;
+    logs)    journalctl --user -u "$WATCH_UNIT" -f ;;
+    run|"")  exec "$(dirname "$0")/jobbot-watch" ;;
+    *) erro "subcomando inválido: watch $sub"; exit 1 ;;
+  esac
+}
+
 # Abre o Chrome NATIVO no host, com a porta de CDP liberada.
 #
 # Por que um profile dedicado (--user-data-dir) e obrigatorio: desde o
@@ -192,6 +245,8 @@ case "${1:-up}" in
   shell) cmd_shell ;;
   rebuild) shift || true; cmd_rebuild "${1:-auto}" ;;
   chrome) cmd_chrome ;;
+  watch) shift || true; cmd_watch "${1:-help}" ;;
   ui) cmd_ui ;;
-  *) erro "comando desconhecido: $1"; sed -n '2,20p' "$0"; exit 1 ;;
+  help|-h|--help) sed -n '2,25p' "$0" ;;
+  *) erro "comando desconhecido: $1"; sed -n '2,25p' "$0"; exit 1 ;;
 esac
