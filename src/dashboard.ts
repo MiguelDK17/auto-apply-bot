@@ -29,6 +29,8 @@ export interface ControleUI {
   ativo: boolean;
   rodando: boolean;
   dryRun: boolean;
+  /** URL do navegador remoto (noVNC) — quando houver Chrome no container. */
+  novncUrl?: string;
 }
 
 export function gerarHTML(controle?: ControleUI): string {
@@ -233,10 +235,15 @@ ${semControle}
 
 /** Painel de controle (botões de iniciar/parar + log ao vivo). */
 function gerarPainelControle(controle: ControleUI): string {
+  const botaoNovnc = controle.novncUrl
+    ? `<a class="btn ghost" href="${escaparHtml(controle.novncUrl)}" target="_blank" rel="noopener">🖥️ Ver navegador</a>`
+    : '';
+
   return `
   <div class="panel">
     <button class="btn start" id="btnStart">▶ Iniciar bot</button>
     <button class="btn stop" id="btnStop" disabled>⏹ Parar</button>
+    ${botaoNovnc}
     <label class="label">
       <input type="checkbox" id="chkDryRun" ${controle.dryRun ? 'checked' : ''}> dry-run (simula, não envia)
     </label>

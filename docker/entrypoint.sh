@@ -59,6 +59,8 @@ start_chrome() {
     --window-size=1280,1024 \
     --no-first-run \
     --no-default-browser-check \
+    --test-type \
+    --hide-crash-restore-bubble \
     about:blank >>/tmp/chrome.log 2>&1 &
 }
 
@@ -95,6 +97,8 @@ if [ "$MODO_CHROME" = "local" ]; then
 
   start_chrome
   watchdog_chrome &
+  # A UI usa essa flag para oferecer o link do navegador remoto (noVNC).
+  export BOT_HAS_LOCAL_CHROME=true
 else
   # Modo remoto: espera o Chrome do host. Se ele não responder, cai para o
   # Chrome local em vez de deixar o container morto (degrada, mas funciona).
@@ -119,6 +123,7 @@ else
     watchdog_chrome &
     CDP_ENDPOINT="http://127.0.0.1:$CDP_PORT"
     export CDP_ENDPOINT   # o app (bot + UI) precisa apontar para o Chrome local
+    export BOT_HAS_LOCAL_CHROME=true
   fi
 fi
 

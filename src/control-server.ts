@@ -212,8 +212,22 @@ function responderJSON(res: http.ServerResponse, codigo: number, corpo: unknown)
   res.end(json);
 }
 
-function lerCorpo(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve) => {
+/**
+ * URL do navegador remoto (noVNC), com autoconnect — é o que faz o Chrome
+ * aparecer na tela. Montada a partir do Host da requisição, trocando a porta
+ * do dashboard pela do noVNC (funciona tanto em localhost quanto por IP/domínio).
+ *
+ * Só é oferecida quando existe Chrome LOCAL no container (flag do entrypoint):
+ * no modo host o navegador é o do usuário, e não há o que espelhar.
+ */
+function urlDoNoVnc(req: http.IncomingMessage): string | undefined {
+  if (process.env.BOT_HAS_LOCAL_CHROME !== 'true') return undefined;
+  const portaNoVnc = process.env.BOT_NOVNC_PORT || '7900';
+  const host = (req.headers.host || `localhost:${portaNoVnc}`).split(':')[0];
+  return `http://${host}:${portaNoVnc}/vnc.html?autoconnect=1&resize=scale`;
+}
+
+function lerCorpo(req: http.IncomingMessage): Promise<string> {  return new Promise((resolve) => {
     let dados = '';
     req.on('data', (c) => {
       dados += c;
@@ -237,7 +251,14 @@ export function iniciarControlServer(port: number, host: string): void {
         'Content-Type': 'text/html; charset=utf-8',
         'X-Content-Type-Options': 'nosniff',
       });
-      res.end(gerarHTML({ ativo: true, rodando: estado.rodando, dryRun: estado.dryRun }));
+      res.end(
+        gerarHTML({
+          ativo: true,
+          rodando: estado.rodando,
+          dryRun: estado.dryRun,
+          novncUrl: urlDoNoVnc(req),
+        }),
+      );
       return;
     }
 
