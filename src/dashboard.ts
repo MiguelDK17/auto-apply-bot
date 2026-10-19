@@ -84,6 +84,21 @@ export function gerarHTML(controle?: ControleUI): string {
     </div>`;
 
   const painelControle = controle?.ativo ? gerarPainelControle(controle) : '';
+  // O botão de tema existe mesmo sem o painel de controle.
+  const semControle = controle?.ativo ? '' : `
+  <script>
+    (function () {
+      const btn = document.getElementById('btnTema');
+      const salvo = localStorage.getItem('jobbot-tema');
+      if (salvo === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      if (btn) btn.addEventListener('click', () => {
+        const claro = document.documentElement.getAttribute('data-theme') === 'light';
+        if (claro) document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.setItem('jobbot-tema', claro ? 'dark' : 'light');
+      });
+    })();
+  </script>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -92,42 +107,87 @@ export function gerarHTML(controle?: ControleUI): string {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Job Bot - Dashboard</title>
 <style>
+  /* Paleta Solosis Psychic Teal */
+  :root {
+    --teal-principal: #25C6A2;   /* identidade, destaque, ações principais */
+    --teal-escuro:    #15876D;   /* estados escuros e contraste */
+    --mint-vibrante:  #44E3A8;   /* destaques luminosos e interativos */
+    --mint-claro:     #82F4CD;   /* variações suaves e realces */
+    --teal-profundo:  #156956;   /* tons escuros complementares */
+    --branco-frio:    #FDFFFF;   /* superfícies claras e contraste neutro */
+
+    --bg:        #061310;
+    --surface:   #0C241F;
+    --surface-2: #10302A;
+    --border:    #17544A;
+    --text:      var(--branco-frio);
+    --text-mute: #9FC9BF;
+    --text-dim:  #6E9A8E;
+    --shadow:    0 1px 0 rgba(37, 198, 162, 0.12);
+  }
+  [data-theme="light"] {
+    --bg:        var(--branco-frio);
+    --surface:   #F2FBF8;
+    --surface-2: #E4F6F0;
+    --border:    #BFE7DC;
+    --text:      #06231D;
+    --text-mute: #3E6C61;
+    --text-dim:  #6E9A8E;
+    --shadow:    0 1px 2px rgba(21, 105, 86, 0.10);
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; }
-  h1 { font-size: 24px; margin-bottom: 24px; color: #f8fafc; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 24px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  h1 { font-size: 24px; color: var(--text); display: flex; align-items: center; gap: 12px; }
+  h1::before { content: ''; width: 10px; height: 26px; border-radius: 4px; background: linear-gradient(180deg, var(--mint-vibrante), var(--teal-principal) 55%, var(--teal-escuro)); box-shadow: 0 0 18px rgba(37, 198, 162, 0.45); }
   .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-  .stat-card { background: #1e293b; border-radius: 12px; padding: 20px; min-width: 150px; }
-  .stat-value { font-size: 32px; font-weight: 700; color: #38bdf8; }
-  .stat-label { font-size: 14px; color: #94a3b8; margin-top: 4px; }
-  .stat-sub { font-size: 12px; color: #64748b; margin-top: 4px; }
-  table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
-  th { background: #334155; padding: 12px 16px; text-align: left; font-size: 13px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
-  td { padding: 10px 16px; border-top: 1px solid #334155; font-size: 14px; }
-  tr:hover { background: #334155; }
-  a { color: #38bdf8; text-decoration: none; }
-  a:hover { text-decoration: underline; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; min-width: 150px; box-shadow: var(--shadow); }
+  .stat-value { font-size: 32px; font-weight: 700; color: var(--teal-principal); }
+  .stat-label { font-size: 14px; color: var(--text-mute); margin-top: 4px; }
+  .stat-sub { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th { background: var(--surface-2); padding: 12px 16px; text-align: left; font-size: 13px; color: var(--mint-claro); text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 10px 16px; border-top: 1px solid var(--border); font-size: 14px; }
+  tr:hover { background: var(--surface-2); }
+  a { color: var(--mint-vibrante); text-decoration: none; }
+  a:hover { color: var(--mint-claro); text-decoration: underline; }
   .score { display: inline-block; width: 28px; height: 28px; line-height: 28px; text-align: center; border-radius: 50%; font-size: 12px; font-weight: 700; }
-  .score.high { background: #166534; color: #4ade80; }
-  .score.mid { background: #854d0e; color: #fbbf24; }
-  .score.low { background: #991b1b; color: #fca5a5; }
+  .score.high { background: rgba(37, 198, 162, 0.18); color: var(--mint-vibrante); }
+  .score.mid { background: rgba(251, 191, 36, 0.16); color: #FBBF24; }
+  .score.low { background: rgba(248, 113, 113, 0.16); color: #FCA5A5; }
   .status { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-  .status.aplicado { background: #166534; color: #4ade80; }
-  .status.dry-run { background: #1e40af; color: #93c5fd; }
-  .empty { text-align: center; padding: 48px; color: #64748b; }
-  .panel { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-  .btn { border: 0; border-radius: 10px; padding: 12px 22px; font-size: 15px; font-weight: 600; cursor: pointer; color: #0f172a; }
-  .btn.start { background: #38bdf8; }
-  .btn.stop { background: #f87171; color: #fff; }
+  .status.aplicado { background: rgba(37, 198, 162, 0.18); color: var(--mint-vibrante); }
+  .status.dry-run { background: rgba(130, 244, 205, 0.14); color: var(--mint-claro); }
+  .empty { text-align: center; padding: 48px; color: var(--text-dim); }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; box-shadow: var(--shadow); }
+  .btn { border: 0; border-radius: 10px; padding: 12px 22px; font-size: 15px; font-weight: 700; cursor: pointer; transition: filter .15s ease, transform .05s ease; }
+  .btn.start { background: linear-gradient(180deg, var(--mint-vibrante), var(--teal-principal) 60%, var(--teal-escuro)); color: #04211C; }
+  .btn.start:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn.stop { background: var(--teal-profundo); color: var(--mint-claro); border: 1px solid var(--teal-escuro); }
+  .btn.stop:hover:not(:disabled) { filter: brightness(1.25); }
+  .btn.ghost { background: transparent; color: var(--text-mute); border: 1px solid var(--border); padding: 9px 14px; font-size: 13px; }
+  .btn.ghost:hover { color: var(--mint-vibrante); border-color: var(--teal-principal); }
+  .btn:active:not(:disabled) { transform: translateY(1px); }
   .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; }
-  .chip.on { background: #166534; color: #4ade80; }
-  .chip.off { background: #475569; color: #cbd5e1; }
-  .log { background: #0b1220; border-radius: 12px; padding: 16px; max-height: 340px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; color: #cbd5e1; }
-  .label { font-size: 13px; color: #94a3b8; }
+  .chip { padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; letter-spacing: .3px; }
+  .chip.on { background: rgba(37, 198, 162, 0.18); color: var(--mint-vibrante); border: 1px solid var(--teal-principal); }
+  .chip.off { background: var(--surface-2); color: var(--text-mute); border: 1px solid var(--border); }
+  .log { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; max-height: 340px; overflow-y: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; color: var(--text-mute); margin-bottom: 24px; }
+  .log .lv-info  { color: var(--text-dim); }
+  .log .lv-agente{ color: var(--teal-principal); }
+  .log .lv-tool  { color: var(--mint-vibrante); }
+  .log .lv-warn  { color: #FBBF24; }
+  .log .lv-erro  { color: #FCA5A5; }
+  .label { font-size: 13px; color: var(--text-mute); display: inline-flex; align-items: center; gap: 6px; }
+  .label input { accent-color: var(--teal-principal); }
 </style>
 </head>
 <body>
-  <h1>Job Bot - Dashboard</h1>
+  <header>
+    <h1>Job Bot - Dashboard</h1>
+    <button class="btn ghost" id="btnTema" title="Alternar tema">◐ Tema</button>
+  </header>
 
   ${painelControle}
 
@@ -164,7 +224,7 @@ export function gerarHTML(controle?: ControleUI): string {
     </tbody>
   </table>
   ` : '<div class="empty">Nenhuma candidatura registrada ainda.</div>'}
-
+${semControle}
 </body>
 </html>`;
 }
@@ -190,6 +250,33 @@ function gerarPainelControle(controle: ControleUI): string {
     const logBox = document.getElementById('logBox');
     const infoCusto = document.getElementById('infoCusto');
     let ultimoRodando = ${controle.rodando ? 'true' : 'false'};
+
+    // Tema: começa salvo, senão escuro (padrão).
+    const btnTema = document.getElementById('btnTema');
+    const temaSalvo = localStorage.getItem('jobbot-tema');
+    if (temaSalvo === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    if (btnTema) btnTema.addEventListener('click', () => {
+      const atual = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+      const novo = atual === 'light' ? 'dark' : 'light';
+      if (novo === 'light') document.documentElement.setAttribute('data-theme', 'light');
+      else document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('jobbot-tema', novo);
+    });
+
+    // Escape obrigatório: o log carrega conteúdo de páginas de vagas
+    // (não confiável) — nunca injetar HTML cru.
+    function esc(t) {
+      return String(t)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function colorir(linha) {
+      let cls = 'lv-info';
+      if (/\\[ERRO\\]/.test(linha)) cls = 'lv-erro';
+      else if (/\\[WARN\\]/.test(linha)) cls = 'lv-warn';
+      else if (/\\[TOOL\\]/.test(linha)) cls = 'lv-tool';
+      else if (/\\[AGENTE\\]/.test(linha)) cls = 'lv-agente';
+      return '<span class="' + cls + '">' + esc(linha) + '</span>';
+    }
 
     async function post(url, body) {
       const r = await fetch(url, {
@@ -227,7 +314,7 @@ function gerarPainelControle(controle: ControleUI): string {
 
         const l = await (await fetch('/api/logs')).json();
         if (l.linhas && l.linhas.length) {
-          logBox.textContent = l.linhas.slice(-120).join('\\n');
+          logBox.innerHTML = l.linhas.slice(-120).map(colorir).join('\\n');
           logBox.scrollTop = logBox.scrollHeight;
         }
       } catch (e) {

@@ -54,6 +54,17 @@ describe('dashboard — painel de controle', () => {
     // Validação
     expect(html).toContain('RODANDO');
   });
+
+  it('usa a paleta Solosis Psychic Teal em todos os tokens', () => {
+    // Cenário: dashboard renderizado
+    // Ação
+    const html = gerarHTML({ ativo: true, rodando: false, dryRun: true });
+
+    // Validação: os 6 cores da identidade estão presentes
+    for (const cor of ['#25C6A2', '#15876D', '#44E3A8', '#82F4CD', '#156956', '#FDFFFF']) {
+      expect(html).toContain(cor);
+    }
+  });
 });
 
 describe('dashboard — escaping (XSS)', () => {
