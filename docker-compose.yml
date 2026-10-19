@@ -1,48 +1,69 @@
+# ============================================================
 # auto-apply-bot — pilha completa (bot + Chrome headful + noVNC).
 #
-# Portas (host → container):
-#   1717 → 3000  dashboard (1717 em referência a MiguelDK17)
-#   7900 → 7900  noVNC — abra no browser para login inicial e CAPTCHAs manuais
-# A porta CDP (9222) NÃO é mapeada de propósito: Chrome e bot conversam
-# dentro do container; expor o controle do navegador para fora seria risco.
+# Use o atalho `./bin/jobbot up` — ele escolhe o modo certo sozinho e
+# resolve as portas. Este arquivo existe para quem quiser o Docker puro.
 #
-# Uso:
-#   Execução única (manual):  docker compose run --rm bot
-#   Residente (cron, futuro): docker compose up -d   (com CRON_ATIVO=true no .env)
-#   Ver o navegador:          http://localhost:7900
-#   Dashboard:                http://localhost:1717
+# PORTAS (definidas no .env):
+#   BOT_UI_PORT    → dashboard/control server (padrão 1717)
+#   BOT_NOVNC_PORT → navegador remoto via noVNC (padrão 7900, só no modo local)
+#   BOT_CDP_PORT   → porta CDP do Chrome do host (padrão 9222, só no modo host)
+#
+# Modos:
+#   local  → Chrome DENTRO do container (login via noVNC)
+#   host   → usa o Chrome do HOST (já logado) via network_mode: host
+# ============================================================
+
+name: auto-apply-bot
+
+x-comum: &comum
+  build: .
+  image: auto-apply-bot:latest
+  env_file:
+    - .env
+  volumes:
+    # Perfil do Chrome (os logins persistem entre runs).
+    - chrome-profile:/home/node/.chrome-profile
+    # Estado e artefatos do bot.
+    - bot-data:/app/data
+    - bot-logs:/app/logs
+    - bot-shots:/app/screenshots
+    # Config e currículos vêm do host (dados pessoais, fora da imagem).
+    - ./config:/app/config:ro
+    - ./curriculos:/app/curriculos
 
 services:
+  # ---- Modo local: Chrome dentro do container -------------------------------
+  # UI na BOT_UI_PORT, navegador remoto na BOT_NOVNC_PORT.
+  # A porta CDP fica interna (o bot e o Chrome conversam dentro do container).
   bot:
-    build: .
-    image: auto-apply-bot:latest
+    <<: *comum
+    container_name: auto-apply-bot
     ports:
-      - "1717:3000"
-      - "7900:7900"
-    env_file:
-      - .env
+      - "${BOT_UI_PORT:-1717}:3000"
+      - "${BOT_NOVNC_PORT:-7900}:7900"
     environment:
-      # Bot e Chrome estão no mesmo container: o default (127.0.0.1:9222) já vale.
-      # Dashboard precisa bind 0.0.0.0 para o port-mapping alcançar (ver dashboard.ts).
       DASHBOARD_HOST: 0.0.0.0
-      # MODO UI: o container sobe SÓ o control server (dashboard + botões).
-      # O agente NÃO roda sozinho — você clica em "Iniciar bot".
-      # (CONTROL_MODE=false volta ao comportamento antigo: roda ao subir)
       CONTROL_MODE: "true"
-    volumes:
-      # Perfil do Chrome (logins persistem entre runs — o equivalente
-      # containerizado do ~/.chrome-debug-profile do setup local).
-      - chrome-profile:/home/node/.chrome-profile
-      # Estado e artefatos do bot.
-      - bot-data:/app/data
-      - bot-logs:/app/logs
-      - bot-shots:/app/screenshots
-      # Config e currículos vêm do host (dados pessoais, fora da imagem).
-      # O usuário do container é o `node` (uid 1000) = uid do host, então
-      # a pasta _tailored (gerada) continua gravável.
-      - ./config:/app/config:ro
-      - ./curriculos:/app/curriculos
-    # Sem restart: always por enquanto — cron ainda não é prioridade.
+      # "auto": usa o Chrome local; se apontar para um CDP remoto que não
+      # responde, o entrypoint cai para o Chrome local.
+      START_LOCAL_CHROME: "true"
+
+  # ---- Modo host: usa o Chrome do host (já logado) --------------------------
+  # Sobe com: docker compose --profile host-chrome up -d bot-host
+  # (o atalho `./bin/jobbot up` faz isso sozinho quando detecta o CDP do host)
+  bot-host:
+    <<: *comum
+    container_name: auto-apply-bot-host
+    profiles: ["host-chrome"]
+    network_mode: host
+    environment:
+      DASHBOARD_HOST: 127.0.0.1
+      DASHBOARD_PORT: "${BOT_UI_PORT:-1717}"
+      CONTROL_MODE: "true"
+      CDP_ENDPOINT: "http://127.0.0.1:${BOT_CDP_PORT:-9222}"
+      # "auto": tenta o Chrome do host e cai para o local se ele não responder.
+      START_LOCAL_CHROME: "auto"
 
 volumes:
   chrome-profile:

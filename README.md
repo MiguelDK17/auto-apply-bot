@@ -149,39 +149,30 @@ Com `CONTROL_MODE=true` no `.env`, o processo sobe **só a UI** (dashboard) e o 
 cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
 # config/*.json precisam existir (mesmo passo 3 acima)
 
-docker compose build
-docker compose up -d              # sobe a UI (porta 1717) — o bot não roda sozinho
+./bin/jobbot up         # sobe a UI em http://localhost:1717
 ```
 
-Modos de navegador (veja a seção abaixo):
+O atalho `./bin/jobbot` resolve o resto: escolhe o modo do navegador, sobe o container certo e te imprime a URL. Sem ele, o equivalente é:
 
 ```bash
-# Modo A: Chrome dentro do container (login via noVNC em http://localhost:7900)
-docker compose up -d
-
-# Modo B: usa o Chrome do host, já logado (network_mode: host)
-docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml up -d
+docker compose build
+docker compose up -d              # modo local: Chrome no container
 ```
 
-O container inclui bot + Chrome headful + noVNC. Portas: `1717` (dashboard) e `7900` (navegador remoto — abra no browser para fazer login nos sites e resolver CAPTCHAs; o perfil persiste em volume Docker). A porta CDP (9222) fica interna ao container de propósito. `DRY_RUN=true` continua valendo para o primeiro teste.
+Os dois modos de navegador:
+
+| Modo | Comando | Navegador | Login |
+|---|---|---|---|
+| **local** | `./bin/jobbot up --local` | Chrome **dentro** do container | via noVNC: `http://localhost:7900` |
+| **host** | `./bin/jobbot up --host` | o Chrome **que você já tem aberto** | o seu, já feito |
+
+`./bin/jobbot up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container.
 
 **Modo UI (padrão no Docker):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
 
 **Modo automático (opcional):** `CONTROL_MODE=false` no `.env` volta ao comportamento antigo — o agente roda assim que o container sobe (útil para cron).
 
-**Modo A — Chrome dentro do container (padrão):** o container sobe o próprio Chrome, com perfil persistente em volume. Você faz login uma vez via `http://localhost:7900` (noVNC) e as sessões ficam salvas.
-
-**Modo B — usar o Chrome que você já tem aberto (logado):**
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml up -d
-```
-
-No modo B o container compartilha a rede do host (`network_mode: host`) e conversa com o Chrome do host via `127.0.0.1:9222` — ou seja, o bot age no navegador onde você **já está logado** (LinkedIn, Gupy, etc.), sem refazer login. O dashboard continua em `http://localhost:1717`.
-
-Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugging-port=9222`) e `DRY_RUN=true` até você confiar no fluxo — neste modo o bot pilota seu navegador real.
-
-> ⚠️ **Atenção ao `docker compose run`:** ele **não publica as portas** do serviço (precisa de `--service-ports`) e cria um container *paralelo*, sem derrubar o que já está de pé. Para o uso normal, prefira `up -d`.
+**Portas:** todas ficam no `.env` (`BOT_UI_PORT`, `BOT_NOVNC_PORT`, `BOT_CDP_PORT`) — se algo estiver ocupado, mude lá e o compose/atualizador acompanha. A porta CDP **nunca** é publicada: o bot e o Chrome conversam dentro do container (ou via loopback, no modo host).
 
 ---
 
@@ -190,24 +181,31 @@ Requisitos do modo B: Chrome no host aberto com porta de debug (`--remote-debugg
 O projeto é **docker-first**: uma imagem com Node 22, Chrome headful, Xvfb e noVNC, e um **control server** que transforma o container em uma UI de comando.
 
 ```bash
-docker compose build
-docker compose -f docker-compose.yml -f docker-compose.host-chrome.yml up -d
-# abra http://localhost:1717
+./bin/jobbot up        # sobe (auto-detecta o modo)
+./bin/jobbot status    # estado, portas e se a UI responde
+./bin/jobbot logs      # segue o log
+./bin/jobbot down      # derruba (preserva volumes e banco)
 ```
+
+Atalhos equivalentes via `make`: `make up`, `make status`, `make logs`, `make down`, `make shell`, `make rebuild`.
 
 | Peça | O que faz |
 |---|---|
+| `bin/jobbot` | **Atalho único**: escolhe o modo (host/local), sobe, derruba, logs, status. Lê as portas do `.env` |
+| `Makefile` | Atalhos `make up` / `make down` / `make logs`… delegando para o script |
 | `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc`/`novnc` + `@playwright/mcp` pré-instalado |
-| `docker/entrypoint.sh` | Sobe Xvfb → noVNC → Chrome headful (perfil em volume) → espera o CDP → executa o bot |
-| `docker-compose.yml` | Modo A: Chrome no container, portas `1717` (UI) e `7900` (noVNC), volumes para perfil/dados/logs/screenshots |
-| `docker-compose.host-chrome.yml` | Modo B: `network_mode: host` + `CDP_ENDPOINT=127.0.0.1:9222` → usa o Chrome do host |
+| `docker/entrypoint.sh` | Sobe Xvfb → noVNC → Chrome headful (perfil em volume) → espera o CDP → executa o bot. ** Cai para o Chrome local** se o Chrome do host não responder |
+| `docker-compose.yml` | Um arquivo só, com os dois serviços: `bot` (local) e `bot-host` (host, via `profiles`). Portas vindas do `.env` |
 | `src/control-server.ts` | UI de comando: `POST /api/start`, `POST /api/stop`, `GET /api/status`, `GET /api/logs` |
 
 Detalhes que importam:
 - **uid alinhado**: o container roda como `node` (uid 1000) — o mesmo do host — então os bind-mounts (`curriculos/`, `config/`) continuam graváveis.
 - **Perfil persistente**: o volume `chrome-profile` guarda a sessão do Chrome entre runs (logins não somem).
+- **Resiliência**: Chrome do host fechado → o container sobe o Chrome dele; profile travado por container anterior → o entrypoint limpa os singletons.
 - **Custo dinâmico**: quando o provedor reporta o custo real (OpenRouter), o dashboard mostra o valor exato, não uma estimativa.
 - **`CONTROL_MODE=false`** volta ao auto-run, para uso com cron.
+
+> ⚠️ **`docker compose run`** (o do Docker puro) **não publica as portas** do serviço e cria um container *paralelo*, sem derrubar o que já está de pé — por isso o atalho `jobbot` usa `up`/`down`.
 
 ---
 
@@ -221,6 +219,9 @@ Detalhes que importam:
 | `AGENT_LLM_API_KEY` | Chave do provedor do agente | *obrigatório* |
 | `AGENT_LLM_MODEL` | Modelo do agente (qualquer um do OpenRouter com tool calling) | `deepseek/deepseek-v4-flash-0731` |
 | `CDP_ENDPOINT` | Endpoint CDP do Chrome (use `127.0.0.1`, não `localhost`, p/ evitar `ECONNREFUSED ::1`) | `http://127.0.0.1:9222` |
+| `BOT_UI_PORT` | Porta da UI/control server no host (Docker) | `1717` |
+| `BOT_NOVNC_PORT` | Porta do navegador remoto noVNC no host (Docker) | `7900` |
+| `BOT_CDP_PORT` | Porta CDP do Chrome do host (usada pelo modo host) | `9222` |
 | `CONTROL_MODE` | `true` = container sobe só a UI (o agente roda sob demanda) | `true` |
 | `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
 | `DASHBOARD_HOST` | Bind do dashboard (`0.0.0.0` no Docker p/ port-mapping) | `127.0.0.1` |
@@ -530,9 +531,11 @@ auto-apply-bot/
 │   └── respostas.json            # Respostas pré-definidas
 ├── docker/
 │   └── entrypoint.sh     # Xvfb + Chrome headful + noVNC → sobe o bot
+├── bin/
+│   └── jobbot            # Atalho único: up/down/logs/status (auto-detecta o modo)
 ├── Dockerfile            # Imagem: node:22 + Chrome + Xvfb/noVNC
-├── docker-compose.yml    # Modo A: Chrome no container (UI na 1717, noVNC na 7900)
-├── docker-compose.host-chrome.yml  # Modo B: usa o Chrome do host (já logado)
+├── docker-compose.yml    # Dois serviços: bot (Chrome no container) e bot-host (Chrome do host)
+├── Makefile              # Atalhos: make up / make down / make logs
 ├── .env.example
 ├── package.json
 └── tsconfig.json

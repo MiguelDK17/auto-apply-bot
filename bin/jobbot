@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# jobbot — atalho único para o ciclo de vida do bot em Docker.
+#
+#   ./bin/jobbot up          sobe (escolhe o modo sozinho)
+#   ./bin/jobbot up --host   força o modo host (Chrome do host, já logado)
+#   ./bin/jobbot up --local  força o modo local (Chrome no container)
+#   ./bin/jobbot down        derruba tudo
+#   ./bin/jobbot logs        segue o log (Ctrl+C sai)
+#   ./bin/jobbot status      mostra o estado
+#   ./bin/jobbot shell       abre um shell no container
+#   ./bin/jobbot rebuild     reconstrói a imagem e sobe de novo
+#   ./bin/jobbot ui          só imprime a URL da UI
+#
+# As portas ficam no .env (BOT_UI_PORT, BOT_NOVNC_PORT, BOT_CDP_PORT).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# Carrega o .env sem exportar commented lines.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
+UI_PORT="${BOT_UI_PORT:-1717}"
+NOVNC_PORT="${BOT_NOVNC_PORT:-7900}"
+CDP_PORT="${BOT_CDP_PORT:-9222}"
+COMPOSE=(docker compose)
+
+c() { printf '\033[36m%s\033[0m\n' "$*"; }
+ok() { printf '\033[32m%s\033[0m\n' "$*"; }
+warn() { printf '\033[33m%s\033[0m\n' "$*"; }
+erro() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+
+# Detecta se há um Chrome do host com CDP na porta configurada.
+cdp_do_host_vivo() {
+  curl -sf -m 2 "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1
+}
+
+modo() {
+  # aceita "host", "--host", "local", "--local" e "auto"
+  local m="${1:-auto}"
+  m="${m#--}"
+  case "$m" in
+    host) echo host ;;
+    local) echo local ;;
+    auto)
+      if cdp_do_host_vivo; then echo host; else echo local; fi
+      ;;
+    *) erro "modo inválido: $1 (use: auto|host|local)"; exit 1 ;;
+  esac
+}
+
+cmd_up() {
+  local m; m="$(modo "${1:-auto}")"
+  if [ "$m" = "host" ]; then
+    c "→ Modo HOST: usando o Chrome do host (CDP ${CDP_PORT})"
+    "${COMPOSE[@]}" --profile host-chrome up -d bot-host
+    ok "UI: http://localhost:${UI_PORT}"
+  else
+    c "→ Modo LOCAL: Chrome dentro do container"
+    "${COMPOSE[@]}" up -d bot
+    ok "UI:      http://localhost:${UI_PORT}"
+    ok "noVNC:   http://localhost:${NOVNC_PORT}   (login / CAPTCHA)"
+  fi
+}
+
+cmd_down() {
+  c "→ Derrubando (modo local + host)..."
+  "${COMPOSE[@]}" --profile host-chrome down --remove-orphans
+  ok "Feito. (os volumes e o banco foram preservados)"
+}
+
+cmd_logs() {
+  "${COMPOSE[@]}" --profile host-chrome logs -f --tail=100
+}
+
+cmd_status() {
+  c "Portas: UI=${UI_PORT} | noVNC=${NOVNC_PORT} | CDP=${CDP_PORT}"
+  if cdp_do_host_vivo; then
+    ok "Chrome do host: VIVO (modo host disponível)"
+  else
+    warn "Chrome do host: sem CDP em ${CDP_PORT} (modo host indisponível)"
+  fi
+  "${COMPOSE[@]}" --profile host-chrome ps
+  echo
+  curl -sf -m 3 "http://localhost:${UI_PORT}/api/status" 2>/dev/null \
+    | head -c 400 && echo || warn "UI não responde em http://localhost:${UI_PORT}"
+}
+
+cmd_shell() {
+  local cname="auto-apply-bot"
+  docker ps --format '{{.Names}}' | grep -q "^auto-apply-bot-host$" && cname="auto-apply-bot-host"
+  "${COMPOSE[@]}" exec "$cname" bash
+}
+
+cmd_rebuild() {
+  c "→ Rebuild da imagem…"
+  "${COMPOSE[@]}" build
+  cmd_up "${1:-auto}"
+}
+
+cmd_ui() {
+  echo "http://localhost:${UI_PORT}"
+}
+
+case "${1:-up}" in
+  up) shift || true; cmd_up "${1:-auto}" ;;
+  down) cmd_down ;;
+  logs) cmd_logs ;;
+  status) cmd_status ;;
+  shell) cmd_shell ;;
+  rebuild) shift || true; cmd_rebuild "${1:-auto}" ;;
+  ui) cmd_ui ;;
+  *) erro "comando desconhecido: $1"; sed -n '2,20p' "$0"; exit 1 ;;
+esac
