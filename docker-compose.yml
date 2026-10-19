@@ -36,33 +36,38 @@ services:
   # ---- Modo local: Chrome dentro do container -------------------------------
   # UI na BOT_UI_PORT, navegador remoto na BOT_NOVNC_PORT.
   # A porta CDP fica interna (o bot e o Chrome conversam dentro do container).
+  #
+  # `docker compose up -d` sobe o container E o navegador junto: o Chrome é
+  # persistente (perfil em volume) e fica ESPERANDO, pronto para qualquer
+  # execucao. O bot nunca abre/fecha o navegador — assim o login nao se perde.
   bot:
     <<: *comum
     container_name: auto-apply-bot
+    restart: unless-stopped
     ports:
       - "${BOT_UI_PORT:-1717}:3000"
       - "${BOT_NOVNC_PORT:-7900}:7900"
     environment:
       DASHBOARD_HOST: 0.0.0.0
       CONTROL_MODE: "true"
-      # "auto": usa o Chrome local; se apontar para um CDP remoto que não
-      # responde, o entrypoint cai para o Chrome local.
+      # O Chrome sobe junto com o container e o watchdog o mantem vivo.
       START_LOCAL_CHROME: "true"
 
-  # ---- Modo host: usa o Chrome do host (já logado) --------------------------
+  # ---- Modo host: usa o Chrome do host (ja logado) --------------------------
   # Sobe com: docker compose --profile host-chrome up -d bot-host
   # (o atalho `./bin/jobbot up` faz isso sozinho quando detecta o CDP do host)
   bot-host:
     <<: *comum
     container_name: auto-apply-bot-host
     profiles: ["host-chrome"]
+    restart: unless-stopped
     network_mode: host
     environment:
       DASHBOARD_HOST: 127.0.0.1
       DASHBOARD_PORT: "${BOT_UI_PORT:-1717}"
       CONTROL_MODE: "true"
       CDP_ENDPOINT: "http://127.0.0.1:${BOT_CDP_PORT:-9222}"
-      # "auto": tenta o Chrome do host e cai para o local se ele não responder.
+      # "auto": tenta o Chrome do host e cai para o local se ele nao responder.
       START_LOCAL_CHROME: "auto"
 
 volumes:

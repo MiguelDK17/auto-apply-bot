@@ -77,9 +77,24 @@ function registrarLinha(linha: string): void {
   }
 }
 
-/** Inicia o bot como processo filho. Retorna false se já houver um rodando. */
-export function iniciarRun(dryRun?: boolean): boolean {
-  if (estado.rodando) return false;
+/**
+ * Inicia o bot como processo filho. Retorna false se já houver um rodando.
+ *
+ * Gate de navegador: sem navegador conectado, um run só gastaria tokens
+ * (e tempo) até falhar em todas as tools. Como o Chrome é persistente no
+ * container, o caso "navegador caiu" é exatamente o cenário que o watchdog
+ * resolve — aqui recusamos o run com uma mensagem clara.
+ */
+export async function iniciarRun(dryRun?: boolean): Promise<{ ok: boolean; motivo?: string }> {
+  if (estado.rodando) return { ok: false, motivo: 'Já existe um run em andamento' };
+
+  const nav = await consultarNavegador();
+  if (nav && !nav.conectado) {
+    const motivo = `Navegador indisponível em ${nav.endpoint} — o Chrome não está respondendo. `
+      + 'Verifique o container (docker compose logs) e tente de novo em instantes.';
+    log('WARN', `Control: run recusado — ${motivo}`);
+    return { ok: false, motivo };
+  }
 
   const { command, args } = comandoDoBot();
   const usarDryRun = dryRun ?? (process.env.DRY_RUN === 'true');
@@ -129,7 +144,7 @@ export function iniciarRun(dryRun?: boolean): boolean {
     log('ERRO', `Control: erro ao iniciar bot — ${err.message}`);
   });
 
-  return true;
+  return { ok: true };
 }
 
 /** Para o processo do bot (SIGTERM) se estiver rodando. */
@@ -255,10 +270,10 @@ export function iniciarControlServer(port: number, host: string): void {
       } catch {
         // corpo inválido: usa o padrão do .env
       }
-      const ok = iniciarRun(dryRun);
-      responderJSON(res, ok ? 200 : 409, {
-        ok,
-        mensagem: ok ? 'Bot iniciado' : 'Já existe um run em andamento',
+      const resultado = await iniciarRun(dryRun);
+      responderJSON(res, resultado.ok ? 200 : 409, {
+        ok: resultado.ok,
+        mensagem: resultado.ok ? 'Bot iniciado' : (resultado.motivo ?? 'Não foi possível iniciar'),
         rodando: estado.rodando,
       });
       return;

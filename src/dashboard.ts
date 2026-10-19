@@ -181,6 +181,8 @@ export function gerarHTML(controle?: ControleUI): string {
   .log .lv-erro  { color: #FCA5A5; }
   .label { font-size: 13px; color: var(--text-mute); display: inline-flex; align-items: center; gap: 6px; }
   .label input { accent-color: var(--teal-principal); }
+  .aviso { margin: -8px 0 16px; padding: 12px 16px; border-radius: 10px; font-size: 13px; border: 1px solid var(--teal-escuro); background: rgba(37, 198, 162, 0.10); color: var(--mint-claro); }
+  .aviso.erro { border-color: #7f1d1d; background: rgba(248, 113, 113, 0.12); color: #FCA5A5; }
 </style>
 </head>
 <body>
@@ -245,6 +247,7 @@ function gerarPainelControle(controle: ControleUI): string {
     <span class="label">Navegador:</span>
     <span class="label" id="infoBrowser">consultando…</span>
   </div>
+  <div class="aviso" id="aviso" style="display:none"></div>
   <div class="log" id="logBox">carregando log…</div>
   <script>
     const chip = document.getElementById('chipEstado');
@@ -254,6 +257,7 @@ function gerarPainelControle(controle: ControleUI): string {
     const logBox = document.getElementById('logBox');
     const infoCusto = document.getElementById('infoCusto');
     const infoBrowser = document.getElementById('infoBrowser');
+    const aviso = document.getElementById('aviso');
     let ultimoRodando = ${controle.rodando ? 'true' : 'false'};
 
     // Tema: começa salvo, senão escuro (padrão).
@@ -294,7 +298,13 @@ function gerarPainelControle(controle: ControleUI): string {
 
     btnStart.addEventListener('click', async () => {
       btnStart.disabled = true;
-      await post('/api/start', { dryRun: chkDry.checked });
+      const r = await post('/api/start', { dryRun: chkDry.checked });
+      if (!r.ok && r.mensagem) {
+        // Ex.: navegador indisponível — mostra o motivo (evita run à toa).
+        aviso.textContent = r.mensagem;
+        aviso.className = 'aviso erro';
+        aviso.style.display = 'block';
+      }
       setTimeout(atualizar, 400);
     });
     btnStop.addEventListener('click', async () => {
@@ -320,6 +330,8 @@ function gerarPainelControle(controle: ControleUI): string {
             ? nav.titulo + ' — ' + nav.url + '  (CDP: ' + nav.endpoint + ')'
             : 'SEM CONEXÃO com o navegador em ' + nav.endpoint;
           infoBrowser.style.color = nav.conectado ? 'var(--mint-vibrante)' : '#FCA5A5';
+          // Navegador fora = o botão de iniciar não deve prometer nada.
+          btnStart.title = nav.conectado ? '' : 'Navegador indisponível';
         }
         // Terminou um run: recarrega a página para atualizar a tabela.
         // A posição do log é salva antes (e restaurada no load) para não
