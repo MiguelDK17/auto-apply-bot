@@ -333,8 +333,11 @@ function gerarPainelControle(controle: ControleUI): string {
         // Qual navegador o bot está usando (e o que está na aba ativa).
         if (s.navegador) {
           const nav = s.navegador;
+          const deOnde = nav.origem === 'local'
+            ? 'Chrome do container (noVNC)'
+            : 'Chrome do host (janela real)';
           infoBrowser.textContent = nav.conectado
-            ? nav.titulo + ' — ' + nav.url + '  (CDP: ' + nav.endpoint + ')'
+            ? deOnde + ' — ' + nav.titulo + ' — ' + nav.url
             : 'SEM CONEXÃO com o navegador em ' + nav.endpoint;
           infoBrowser.style.color = nav.conectado ? 'var(--mint-vibrante)' : '#FCA5A5';
           // Navegador fora = o botão de iniciar não deve prometer nada.

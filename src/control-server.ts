@@ -178,13 +178,15 @@ export async function consultarNavegador(): Promise<{
   url: string;
   titulo: string;
   conectado: boolean;
+  origem: 'externo' | 'local';
 } | null> {
   const endpoint = (process.env.CDP_ENDPOINT || 'http://127.0.0.1:9222').replace(/\/+$/, '');
+  const origem = process.env.BOT_NAVEGADOR_ORIGEM === 'local' ? 'local' : 'externo';
   try {
     const resp = await fetch(`${endpoint}/json/list`, {
       signal: AbortSignal.timeout(2500),
     });
-    if (!resp.ok) return { endpoint, url: '', titulo: '', conectado: false };
+    if (!resp.ok) return { endpoint, url: '', titulo: '', conectado: false, origem };
     const alvos = (await resp.json()) as Array<{ type?: string; title?: string; url?: string }>;
     const paginas = alvos.filter((a) => a.type === 'page');
     // Preferimos uma aba de conteúdo real; se só houver chrome:// (ex.: nova
@@ -197,9 +199,10 @@ export async function consultarNavegador(): Promise<{
       url: pagina?.url ?? '',
       titulo: pagina?.title ?? '',
       conectado: true,
+      origem,
     };
   } catch {
-    return { endpoint, url: '', titulo: '', conectado: false };
+    return { endpoint, url: '', titulo: '', conectado: false, origem };
   }
 }
 

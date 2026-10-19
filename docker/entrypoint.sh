@@ -112,6 +112,7 @@ iniciar_stack_local() {
 case "$MODO_CHROME" in
   local)
     iniciar_stack_local
+    export BOT_NAVEGADOR_ORIGEM="local"
     ;;
   remoto)
     # Modo remoto: exige o Chrome externo (CDP de $CDP_ENDPOINT).
@@ -126,6 +127,7 @@ case "$MODO_CHROME" in
       exit 1
     fi
     echo "[entrypoint] Chrome externo conectado"
+    export BOT_NAVEGADOR_ORIGEM="externo"
     ;;
   auto)
     # Preferência: o Chrome de $CDP_ENDPOINT (pode ser o do host, com janela
@@ -137,9 +139,11 @@ case "$MODO_CHROME" in
     done
     if cdp_responde; then
       echo "[entrypoint] usando o Chrome EXTERNO (CDP: $CDP_ENDPOINT)"
+      export BOT_NAVEGADOR_ORIGEM="externo"
     else
-      echo "[entrypoint] Chrome externo indisponivel — iniciando o Chrome LOCAL (perfil proprio, sem seus logins)"
+      echo "[entrypoint] AVISO: Chrome externo indisponivel — usando o Chrome LOCAL do container (janela virtual, visivel em http://localhost:7900)"
       iniciar_stack_local
+      export BOT_NAVEGADOR_ORIGEM="local"
     fi
     ;;
 esac

@@ -65,21 +65,40 @@ limpar_containers_run() {
 }
 
 cmd_up() {
-  local m; m="$(modo "${1:-auto}")"
+  local arg="${1:-auto}"
+  local sem_chrome=false
+  [ "$arg" = "--no-chrome" ] && { sem_chrome=true; arg="auto"; }
 
   # Containers criados com `docker compose run` ficam órfãos (nome aleatório,
   # sem restart policy) e disputam as portas com o container oficial. Limpa
   # antes de subir, para o ambiente ficar previsível.
   limpar_containers_run
 
-  if [ "$m" = "host" ]; then
-    if ! cdp_do_host_vivo; then
-      warn "Chrome do host sem CDP na porta ${CDP_PORT} — subindo assim mesmo (o container cai para o Chrome dele)."
+  # Modo AUTO: se não houver Chrome com CDP, ABRE o Chrome nativo do host —
+  # a janela real, com teclado, é o que o usuário espera ver. Só caímos para o
+  # Chrome do container se ele não puder ser aberto.
+  local m
+  if [ "$arg" = "auto" ] && [ "$sem_chrome" = false ]; then
+    if cdp_do_host_vivo; then
+      m="host"
+    else
+      c "→ Nenhum Chrome com CDP encontrado — abrindo o Chrome nativo..."
+      if cmd_chrome >/dev/null 2>&1 && cdp_do_host_vivo; then
+        m="host"
+      else
+        warn "Não foi possível abrir o Chrome do host — usando o Chrome do container."
+        m="local"
+      fi
     fi
+  else
+    m="$(modo "$arg")"
+  fi
+
+  if [ "$m" = "host" ]; then
     c "→ Modo HOST: usando o Chrome do host (CDP ${CDP_PORT})"
     "${COMPOSE[@]}" up -d bot
     ok "UI: http://localhost:${UI_PORT}"
-    c "   (janela real do Chrome: use ./bin/jobbot chrome para abrir)"
+    c "   Chrome nativo aberto em janela real (profile dedicado, logins persistem)"
   else
     c "→ Modo CONTAINER: Chrome dentro do container (noVNC)"
     "${COMPOSE[@]}" --profile container up -d bot-container
