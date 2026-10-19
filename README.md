@@ -154,6 +154,14 @@ cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
 # UI em http://localhost:1717
 ```
 
+> **Quer o Chrome abrindo junto com o container, sem comando extra?** Instale o watcher (uma vez só):
+> ```bash
+> make watch-install     # serviço systemd do usuário
+> ```
+> A partir daí, **`docker compose up -d` já abre o Chrome na sua tela**: o watcher (que roda no host) vê o container subir e abre o navegador com a porta de CDP liberada. Sem o watcher, use `./bin/jobbot up`, que faz o mesmo na hora.
+>
+> *Por que é preciso um processo do host:* o Chrome dentro do container roda num display virtual (Xvfb) e **não** aparece no seu desktop — o compositor (KWin/Wayland) não aceita janelas remotas (testado: o Chrome conecta no Wayland, mas a janela não é mapeada). Para a janela existir de verdade, o Chrome precisa ser um processo do host, conectado ao container via CDP.
+
 O atalho `./bin/jobbot` resolve o resto: escolhe o modo do navegador, sobe o container certo e te imprime a URL. Sem ele, o equivalente é:
 
 ```bash
@@ -199,7 +207,8 @@ Atalhos equivalentes via `make`: `make up`, `make status`, `make logs`, `make do
 | Peça | O que faz |
 |---|---|
 | `bin/jobbot` | **Atalho único**: abre o Chrome nativo, escolhe o modo (host/container), sobe, derruba, logs, status. Lê as portas do `.env` |
-| `Makefile` | Atalhos `make up` / `make down` / `make logs`… delegando para o script |
+| `bin/jobbot-watch` | **Watcher host-side**: abre o Chrome nativo quando o container sobe (é o que faz `docker compose up -d` abrir o navegador). `make watch-install` instala como serviço systemd |
+| `Makefile` | Atalhos `make up` / `make down` / `make logs` / `make watch`… delegando para os scripts |
 | `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc`/`novnc` + `@playwright/mcp` pré-instalado |
 | `docker/entrypoint.sh` | Escolhe o navegador (externo → local), sobe Xvfb/noVNC/Chrome quando preciso, **watchdog** mantém o Chrome vivo, e executa o bot/UI |
 | `docker-compose.yml` | Um arquivo só, com os dois serviços: `bot` (host, padrão) e `bot-container` (Chrome no container, via `profiles`). Portas vindas do `.env` |

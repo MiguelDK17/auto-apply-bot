@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# jobbot-watch — daemon host-side que ABRE o Chrome nativo quando o container
+# do bot sobe.
+#
+# Por que: um Chrome dentro do container roda num display virtual e NÃO
+# aparece na tela do desktop (o compositor Wayland/KWin não aceita surface
+# remota). Para a janela aparecer de verdade, o Chrome precisa ser um
+# processo do HOST — e nada dentro do container consegue abrir uma janela
+# no seu desktop. Este watcher resolve: ele observa o Docker e, quando o
+# container do bot sobe, abre o Chrome com a porta de CDP liberada.
+#
+# Uso:
+#   ./bin/jobbot-watch              # foreground (Ctrl+C sai)
+#   ./bin/jobbot-watch --once       # checa uma vez e sai
+#
+# Para iniciar junto com a sessão (uma vez só):
+#   mkdir -p ~/.config/systemd/user
+#   cp bin/jobbot-watch.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now jobbot-watch
+set -uo pipefail
+
+cd "$(dirname "$0")/.."
+
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
+CDP_PORT="${BOT_CDP_PORT:-9222}"
+CHROME_PROFILE="${BOT_CHROME_PROFILE:-$HOME/.chrome-debug-profile}"
+LABEL="jobbot.autostart=true"
+ONCE=false
+[ "${1:-}" = "--once" ] && ONCE=true
+
+c() { printf '\033[36m%s\033[0m\n' "$*"; }
+ok() { printf '\033[32m%s\033[0m\n' "$*"; }
+erro() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+
+cdp_vivo() {
+  curl -sf -m 2 "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1
+}
+
+abrir_chrome() {
+  mkdir -p "$CHROME_PROFILE"
+  # shellcheck disable=SC2086
+  setsid google-chrome \
+    --remote-debugging-port="$CDP_PORT" \
+    --user-data-dir="$CHROME_PROFILE" \
+    --no-first-run \
+    --no-default-browser-check \
+    about:blank >/dev/null 2>&1 &
+
+  for i in $(seq 1 15); do
+    sleep 1
+    if cdp_vivo; then
+      ok "[watch] Chrome aberto (CDP ${CDP_PORT}) — janela real na sua tela"
+      return 0
+    fi
+  done
+  erro "[watch] Chrome nao respondeu na porta ${CDP_PORT}"
+  return 1
+}
+
+if ! command -v docker >/dev/null 2>&1; then
+  erro "docker nao encontrado no PATH"
+  exit 1
+fi
+
+c "[watch] monitorando containers com a label ${LABEL} (Ctrl+C sai)"
+
+ultimo_id=""
+while true; do
+  id="$(docker ps --filter "label=${LABEL}" --filter "status=running" -q 2>/dev/null | head -1)"
+
+  if [ -n "$id" ] && [ "$id" != "$ultimo_id" ]; then
+    # Container novo (subiu agora) → garante um Chrome com CDP de pé.
+    ultimo_id="$id"
+    if cdp_vivo; then
+      ok "[watch] container ${id:0:12} no ar — ja existe Chrome com CDP (porta ${CDP_PORT})"
+    else
+      c "[watch] container ${id:0:12} subiu — abrindo o Chrome nativo..."
+      abrir_chrome || erro "[watch] falha ao abrir o Chrome"
+    fi
+  elif [ -z "$id" ]; then
+    ultimo_id=""
+  fi
+
+  [ "$ONCE" = true ] && break
+  sleep 3
+done
