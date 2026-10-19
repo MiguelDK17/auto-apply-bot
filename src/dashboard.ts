@@ -322,13 +322,28 @@ function gerarPainelControle(controle: ControleUI): string {
           infoBrowser.style.color = nav.conectado ? 'var(--mint-vibrante)' : '#FCA5A5';
         }
         // Terminou um run: recarrega a página para atualizar a tabela.
-        if (ultimoRodando && !s.rodando) { location.reload(); return; }
+        // A posição do log é salva antes (e restaurada no load) para não
+        // perder o ponto de leitura a cada reload.
+        if (ultimoRodando && !s.rodando) {
+          sessionStorage.setItem('jobbot-log-scroll', String(logBox.scrollTop));
+          location.reload();
+          return;
+        }
         ultimoRodando = s.rodando;
 
         const l = await (await fetch('/api/logs')).json();
         if (l.linhas && l.linhas.length) {
+          // Scroll "sticky": só auto-rola até o fim se o usuário JÁ estava no
+          // fim. Sem isso, o log Growing puxava a leitura para baixo e
+          // impossibilita ler as linhas antigas.
+          const estavaNoFim = logBox.scrollTop + logBox.clientHeight >= logBox.scrollHeight - 24;
           logBox.innerHTML = l.linhas.slice(-120).map(colorir).join('\\n');
-          logBox.scrollTop = logBox.scrollHeight;
+          if (estavaNoFim) {
+            logBox.scrollTop = logBox.scrollHeight;
+          } else {
+            // Preserva o deslocamento do usuário durante as atualizações.
+            logBox.scrollTop = Math.max(0, logBox.scrollTop);
+          }
         }
       } catch (e) {
         logBox.textContent = 'erro ao consultar status: ' + e;
@@ -336,6 +351,13 @@ function gerarPainelControle(controle: ControleUI): string {
     }
     atualizar();
     setInterval(atualizar, 2000);
+
+    // Restaura a posição do log após um reload (fim de run).
+    const salvo = sessionStorage.getItem('jobbot-log-scroll');
+    if (salvo !== null) {
+      sessionStorage.removeItem('jobbot-log-scroll');
+      setTimeout(() => { logBox.scrollTop = parseInt(salvo, 10) || 0; }, 600);
+    }
   </script>`;
 }
 

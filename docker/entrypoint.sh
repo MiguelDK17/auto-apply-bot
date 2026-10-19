@@ -16,7 +16,7 @@
 #   5. Bot (exec → vira PID 1, recebe o SIGTERM do `docker stop`)
 set -e
 
-CHROME_PROFILE="${CHROME_PROFILE:-/home/bot/.chrome-profile}"
+CHROME_PROFILE="${CHROME_PROFILE:-/home/node/.chrome-profile}"
 CDP_ENDPOINT="${CDP_ENDPOINT:-http://127.0.0.1:9222}"
 CDP_PORT="${CDP_PORT:-9222}"
 START_LOCAL_CHROME="${START_LOCAL_CHROME:-auto}"

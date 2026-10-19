@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, accessSync, constants as fsConstants } from 'fs';
 import { execFileSync } from 'child_process';
 import { createHash } from 'crypto';
 import path from 'path';
@@ -11,7 +11,35 @@ import type { Perfil } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TAILORED_DIR = path.resolve(__dirname, '..', 'curriculos', '_tailored');
+const TAILORED_DIR_FALLBACK = path.resolve(__dirname, '..', 'data', 'curriculos_tailored');
 const BASE_HTML_PATH = path.resolve(__dirname, '..', 'curriculos', '_base', 'template.html');
+
+/**
+ * Diretório onde os currículos personalizados são gravados.
+ *
+ * Prioridade: `CURRICULOS_DIR_TAILORED` (env) → `curriculos/_tailored` do
+ * projeto. Se o diretório não for gravável (típico em Docker, quando o
+ * bind-mount do host pertence a outro uid), cai para `data/curriculos_tailored`
+ * em vez de quebrar a geração do currículo com EACCES.
+ */
+export function resolverDirTailored(): string {
+  const custom = process.env.CURRICULOS_DIR_TAILORED?.trim();
+  const alvo = custom ? path.resolve(custom) : TAILORED_DIR;
+  try {
+    mkdirSync(alvo, { recursive: true });
+    accessSync(alvo, fsConstants.W_OK);
+    return alvo;
+  } catch {
+    try {
+      mkdirSync(TAILORED_DIR_FALLBACK, { recursive: true });
+      accessSync(TAILORED_DIR_FALLBACK, fsConstants.W_OK);
+      log('WARN', `Diretorio de curriculo tailored sem escrita (${alvo}) — usando ${TAILORED_DIR_FALLBACK}`);
+      return TAILORED_DIR_FALLBACK;
+    } catch {
+      return alvo; // deixa o erro original aparecer no writeFileSync
+    }
+  }
+}
 
 // Cache em memória para evitar gerar o mesmo currículo 2x na mesma execução
 const cacheGerados = new Map<string, string>();
@@ -173,15 +201,13 @@ export async function gerarCurriculoTailored(
     return { caminhoPDF, caminhoHTML: caminhoPDF.replace('.pdf', '.html'), fonte: 'cache' };
   }
 
-  // Verifica cache em disco
-  if (!existsSync(TAILORED_DIR)) {
-    mkdirSync(TAILORED_DIR, { recursive: true });
-  }
+  // Verifica cache em disco (com fallback de escrita — ver resolverDirTailored)
+  const dirTailored = resolverDirTailored();
 
   const nomePDF = `curriculo_${hash}.pdf`;
   const nomeHTML = `curriculo_${hash}.html`;
-  const caminhoPDF = path.join(TAILORED_DIR, nomePDF);
-  const caminhoHTML = path.join(TAILORED_DIR, nomeHTML);
+  const caminhoPDF = path.join(dirTailored, nomePDF);
+  const caminhoHTML = path.join(dirTailored, nomeHTML);
 
   if (existsSync(caminhoPDF)) {
     log('TOOL', `Curriculo tailored encontrado em disco: ${nomePDF}`);

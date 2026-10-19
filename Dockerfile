@@ -42,12 +42,15 @@ ENV PLAYWRIGHT_MCP_BIN=/app/node_modules/@playwright/mcp/cli.js
 # (defina CONTROL_MODE=false para voltar ao comportamento "roda ao subir")
 ENV CONTROL_MODE=true
 
-# Chrome nunca como root: cria usuário dedicado com o perfil persistente.
-RUN useradd -m -s /bin/bash bot \
-  && mkdir -p /home/bot/.chrome-profile /app/data /app/logs /app/screenshots \
-  && chown -R bot:bot /app /home/bot
+# Usuário sem privilégios. Usamos o usuário `node` (uid 1000) da imagem base
+# DE PROPÓSITO: ele casa com o uid do usuário do host, então os bind-mounts
+# (curriculos/, config/) ficam graváveis. Com um uid próprio (ex.: 1001), o
+# volume montado do host ficava sem permissão de escrita (EACCES ao gravar o
+# currículo tailored).
+RUN mkdir -p /home/node/.chrome-profile /app/data /app/logs /app/screenshots \
+  && chown -R node:node /app /home/node/.chrome-profile
 
-USER bot
+USER node
 
 # 3000 = dashboard | 5900 = VNC interno | 7900 = noVNC (browser)
 EXPOSE 3000 5900 7900
