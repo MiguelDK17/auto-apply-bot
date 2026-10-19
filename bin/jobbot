@@ -53,8 +53,25 @@ modo() {
   esac
 }
 
+# Remove containers de execução única (`docker compose run`), que ficam
+# órfãos com nome aleatório e sem restart policy.
+limpar_containers_run() {
+  local ids
+  ids="$(docker ps -aq --filter "name=^auto-apply-bot.*-run-" 2>/dev/null || true)"
+  if [ -n "$ids" ]; then
+    # shellcheck disable=SC2086
+    docker rm -f $ids >/dev/null 2>&1 && warn "containers de 'docker compose run' anteriores foram removidos"
+  fi
+}
+
 cmd_up() {
   local m; m="$(modo "${1:-auto}")"
+
+  # Containers criados com `docker compose run` ficam órfãos (nome aleatório,
+  # sem restart policy) e disputam as portas com o container oficial. Limpa
+  # antes de subir, para o ambiente ficar previsível.
+  limpar_containers_run
+
   if [ "$m" = "host" ]; then
     if ! cdp_do_host_vivo; then
       warn "Chrome do host sem CDP na porta ${CDP_PORT} — subindo assim mesmo (o container cai para o Chrome dele)."
