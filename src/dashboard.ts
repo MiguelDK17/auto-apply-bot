@@ -241,6 +241,10 @@ function gerarPainelControle(controle: ControleUI): string {
     <span class="chip ${controle.rodando ? 'on' : 'off'}" id="chipEstado">${controle.rodando ? 'RODANDO' : 'PARADO'}</span>
     <span class="label" id="infoCusto"></span>
   </div>
+  <div class="panel" style="padding:12px 20px;">
+    <span class="label">Navegador:</span>
+    <span class="label" id="infoBrowser">consultando…</span>
+  </div>
   <div class="log" id="logBox">carregando log…</div>
   <script>
     const chip = document.getElementById('chipEstado');
@@ -249,6 +253,7 @@ function gerarPainelControle(controle: ControleUI): string {
     const chkDry = document.getElementById('chkDryRun');
     const logBox = document.getElementById('logBox');
     const infoCusto = document.getElementById('infoCusto');
+    const infoBrowser = document.getElementById('infoBrowser');
     let ultimoRodando = ${controle.rodando ? 'true' : 'false'};
 
     // Tema: começa salvo, senão escuro (padrão).
@@ -307,6 +312,14 @@ function gerarPainelControle(controle: ControleUI): string {
         btnStop.disabled = !s.rodando;
         if (s.ultimoCusto !== null && s.ultimoCusto !== undefined) {
           infoCusto.textContent = 'último custo: $' + s.ultimoCusto.toFixed(4);
+        }
+        // Qual navegador o bot está usando (e o que está na aba ativa).
+        if (s.navegador) {
+          const nav = s.navegador;
+          infoBrowser.textContent = nav.conectado
+            ? nav.titulo + ' — ' + nav.url + '  (CDP: ' + nav.endpoint + ')'
+            : 'SEM CONEXÃO com o navegador em ' + nav.endpoint;
+          infoBrowser.style.color = nav.conectado ? 'var(--mint-vibrante)' : '#FCA5A5';
         }
         // Terminou um run: recarrega a página para atualizar a tabela.
         if (ultimoRodando && !s.rodando) { location.reload(); return; }

@@ -152,6 +152,42 @@ export function obterEstado(): EstadoRun {
   };
 }
 
+/**
+ * Consulta (via HTTP do CDP, sem MCP) qual navegador o bot está usando e o
+ * que está na aba ativa. Tira a dúvida "o bot pegou o Chrome certo?" — sem
+ * isso, no modo host não há nenhuma janela nova aparecendo e parece que o
+ * navegador não conectou.
+ */
+export async function consultarNavegador(): Promise<{
+  endpoint: string;
+  url: string;
+  titulo: string;
+  conectado: boolean;
+} | null> {
+  const endpoint = (process.env.CDP_ENDPOINT || 'http://127.0.0.1:9222').replace(/\/+$/, '');
+  try {
+    const resp = await fetch(`${endpoint}/json/list`, {
+      signal: AbortSignal.timeout(2500),
+    });
+    if (!resp.ok) return { endpoint, url: '', titulo: '', conectado: false };
+    const alvos = (await resp.json()) as Array<{ type?: string; title?: string; url?: string }>;
+    const paginas = alvos.filter((a) => a.type === 'page');
+    // Preferimos uma aba de conteúdo real; se só houver chrome:// (ex.: nova
+    // guia), mostramos essa mesmo assim — melhor um título aproximado do que
+    // um campo vazio que faz parecer que o navegador não conectou.
+    const pagina =
+      paginas.find((a) => a.url && !a.url.startsWith('chrome://')) ?? paginas[0];
+    return {
+      endpoint,
+      url: pagina?.url ?? '',
+      titulo: pagina?.title ?? '',
+      conectado: true,
+    };
+  } catch {
+    return { endpoint, url: '', titulo: '', conectado: false };
+  }
+}
+
 function responderJSON(res: http.ServerResponse, codigo: number, corpo: unknown): void {
   const json = JSON.stringify(corpo);
   res.writeHead(codigo, {
@@ -200,6 +236,7 @@ export function iniciarControlServer(port: number, host: string): void {
         dryRun: estado.dryRun,
         ultimoCusto: estado.ultimoCusto,
         linhas: estado.linhas.length,
+        navegador: await consultarNavegador(),
       });
       return;
     }
