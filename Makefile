@@ -10,11 +10,7 @@ watch:     ## watcher: abre o Chrome quando o container sobe (Ctrl+C sai)
 	@./bin/jobbot-watch
 
 watch-install:  ## instala o watcher como serviço do systemd (uma vez)
-	@mkdir -p ~/.config/systemd/user
-	@cp bin/jobbot-watch.service ~/.config/systemd/user/
-	@systemctl --user daemon-reload
-	@systemctl --user enable --now jobbot-watch
-	@echo "watcher instalado e ativo (systemctl --user status jobbot-watch)"
+	@./bin/jobbot watch install
 
 up:        ## sobe o bot (usa o Chrome do host se existir)
 	@./bin/jobbot up

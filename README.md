@@ -156,9 +156,11 @@ cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
 
 > **Quer o Chrome abrindo junto com o container, sem comando extra?** Instale o watcher (uma vez só):
 > ```bash
-> make watch-install     # serviço systemd do usuário
+> ./bin/jobbot watch install   # serviço systemd do usuário
 > ```
 > A partir daí, **`docker compose up -d` já abre o Chrome na sua tela**: o watcher (que roda no host) vê o container subir e abre o navegador com a porta de CDP liberada. Sem o watcher, use `./bin/jobbot up`, que faz o mesmo na hora.
+>
+> Gerenciar o watcher: `./bin/jobbot watch start|stop|status|logs|uninstall`.
 >
 > *Por que é preciso um processo do host:* o Chrome dentro do container roda num display virtual (Xvfb) e **não** aparece no seu desktop — o compositor (KWin/Wayland) não aceita janelas remotas (testado: o Chrome conecta no Wayland, mas a janela não é mapeada). Para a janela existir de verdade, o Chrome precisa ser um processo do host, conectado ao container via CDP.
 
