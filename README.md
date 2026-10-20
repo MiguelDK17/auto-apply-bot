@@ -4,14 +4,6 @@
 
 O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa cada vaga, preenche formulários automaticamente com respostas variadas e naturais, e gerencia todo o processo de candidatura — tudo usando seu navegador Chrome já logado.
 
-> ### 🧠 Por que OpenRouter como cérebro
->
-> O agente roda no **padrão OpenAI SDK**, então o provedor é uma decisão de *configuração*, não de código. Passando pelo **OpenRouter**, você troca o modelo **sem mexer uma linha**: um `DeepSeek` para custo mínimo, um `Llama` para contexto longo, um `Gemini Flash` para velocidade — ou qualquer outro modelo compatível, com tool calling, na mesma hora.
->
-> **Custo × desempenho sob medida, sem trade-off de arquitetura.** Um único `AGENT_LLM_MODEL` no `.env` define o equilíbrio do seu run: o modelo grátis de alto volume para varredura, um pago quando a vaga realmente merece, um local quando a privacidade pesa mais. A inteligência do agente continua a mesma — a tool calling, o scoring, o histórico e o controle de segurança não mudam; só o motor por trás.
->
-> E o custo deixou de ser estimativa: o OpenRouter devolve o valor **real** de cada requisição, que o bot reporta no dashboard. Menos adivinhação, mais controle.
-
 ---
 
 ## ⚠️ Status do Projeto: Em Desenvolvimento
@@ -55,7 +47,7 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 | **Token Cost Tracking** | Registra tokens de cada chamada e calcula custo em USD — com o **custo real** reportado pelo provedor quando disponível |
 | **Multi-LLM** | Adapter pattern: **OpenRouter** (principal), **Ollama** (local/grátis) ou **Gemini** (auxiliar/secundário) |
 | **PII Anonymization** | Anonimiza nome, email, telefone e links antes de enviar ao LLM — restaura no resultado final |
-| **Docker Ready** | Imagem completa (bot + Chrome headful + noVNC) e **control server**: o container sobe a UI e o agente só roda quando você pedir |
+| **Docker Ready** | Imagem completa (bot + Chrome headful) e **control server**: o container sobe a UI e o agente só roda quando você pedir |
 | **Web Dashboard** | Dashboard em tempo real com botões de iniciar/parar, log ao vivo e tema claro/escuro |
 
 ---
@@ -171,7 +163,7 @@ docker compose build
 docker compose up -d              # usa o Chrome do host (se estiver no ar)
 ```
 
-**Por que o Chrome do host e não o do container:** o Chrome do container vive num display virtual (Xvfb) e só aparece espelhado via noVNC — sem teclado, sem ergonomia. No host, é o **Chrome de verdade**: janela nativa, teclado, mouse, Extensões, seu bookmarks.
+**Por que o Chrome do host e não o do container:** o Chrome do container vive num display virtual (Xvfb) e não aparece no seu desktop — sem teclado, sem ergonomia. No host, é o **Chrome de verdade**: janela nativa, teclado, mouse, Extensões, seu bookmarks.
 
 > ⚠️ **O profile do Chrome precisa ser dedicado** (`~/.chrome-debug-profile`): desde o Chrome 136, o navegador recusa depuração remota no profile padrão (o do seu dia a dia) — e ele já fica travado pelo Chrome aberto normalmente. O `./bin/officeboy chrome` cria esse profile na primeira vez; os logins ficam salvos nele para sempre.
 
@@ -180,21 +172,21 @@ Os dois modos de navegador:
 | Modo | Comando | Navegador | Login |
 |---|---|---|---|
 | **host** (padrão) | `./bin/officeboy up` | o Chrome **que você tem aberto** (janela real) | o seu, no profile dedicado |
-| **container** | `./bin/officeboy up --local` | Chrome **dentro** do container | via noVNC: `http://localhost:7900` |
+| **container** | `./bin/officeboy up --local` | Chrome **dentro** do container | no navegador do container (`http://localhost:7900`) |
 
-`./bin/officeboy up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container (com noVNC) — nunca fica sem navegador.
+`./bin/officeboy up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container — nunca fica sem navegador.
 
 **Modo UI (padrão no Docker):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
 
 **Modo automático (opcional):** `CONTROL_MODE=false` no `.env` volta ao comportamento antigo — o agente roda assim que o container sobe (útil para cron).
 
-**Portas:** todas ficam no `.env` (`BOT_UI_PORT`, `BOT_NOVNC_PORT`, `BOT_CDP_PORT`) — se algo estiver ocupado, mude lá e o compose/atualizador acompanha. A porta CDP do container (9223) é interna e separada da do host (9222), para não disputar a mesma porta.
+**Portas:** as principais ficam no `.env` (`BOT_UI_PORT`, `BOT_CDP_PORT`) — se algo estiver ocupado, mude lá e o compose/atualizador acompanha. A porta CDP do container (9223) é interna e separada da do host (9222), para não disputar a mesma porta.
 
 ---
 
 ## 🐳 Docker & UI de comando
 
-O projeto é **docker-first**: uma imagem com Node 22, Chrome headful, Xvfb e noVNC, e um **control server** que transforma o container em uma UI de comando.
+O projeto é **docker-first**: uma imagem com Node 22, Chrome headful e Xvfb, e um **control server** que transforma o container em uma UI de comando.
 
 ```bash
 ./bin/officeboy chrome     # abre o Chrome nativo (janela real, teclado real)
@@ -231,8 +223,8 @@ Trocar o nome do projeto é só rodar de novo: `./bin/officeboy alias install no
 | `bin/officeboy` | **Atalho único**: abre o Chrome nativo, escolhe o modo (host/container), sobe, derruba, logs, status. Lê as portas do `.env` |
 | `bin/officeboy-watch` | **Watcher host-side**: abre o Chrome nativo quando o container sobe (é o que faz `docker compose up -d` abrir o navegador). `make watch-install` instala como serviço systemd |
 | `Makefile` | Atalhos `make up` / `make down` / `make logs` / `make watch`… delegando para os scripts |
-| `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc`/`novnc` + `@playwright/mcp` pré-instalado |
-| `docker/entrypoint.sh` | Escolhe o navegador (externo → local), sobe Xvfb/noVNC/Chrome quando preciso, **watchdog** mantém o Chrome vivo, e executa o bot/UI |
+| `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc` + `@playwright/mcp` pré-instalado |
+| `docker/entrypoint.sh` | Escolhe o navegador (externo → local), sobe Xvfb/Chrome quando preciso, **watchdog** mantém o Chrome vivo, e executa o bot/UI |
 | `docker-compose.yml` | Um arquivo só, com os dois serviços: `bot` (host, padrão) e `bot-container` (Chrome no container, via `profiles`). Portas vindas do `.env` |
 | `src/control-server.ts` | UI de comando: `POST /api/start`, `POST /api/stop`, `GET /api/status`, `GET /api/logs` |
 
@@ -259,7 +251,6 @@ Detalhes que importam:
 | `AGENT_LLM_MODEL` | Modelo do agente (qualquer um do OpenRouter com tool calling) | `deepseek/deepseek-v4-flash-0731` |
 | `CDP_ENDPOINT` | Endpoint CDP do Chrome (use `127.0.0.1`, não `localhost`, p/ evitar `ECONNREFUSED ::1`) | `http://127.0.0.1:9222` |
 | `BOT_UI_PORT` | Porta da UI/control server no host (Docker) | `1717` |
-| `BOT_NOVNC_PORT` | Porta do navegador remoto noVNC no host (Docker) | `7900` |
 | `BOT_CDP_PORT` | Porta CDP do Chrome do host (usada pelo modo host) | `9222` |
 | `CONTROL_MODE` | `true` = container sobe só a UI (o agente roda sob demanda) | `true` |
 | `DASHBOARD_PORT` | Porta do dashboard web | `3000` |
@@ -569,10 +560,10 @@ officeboy/
 │   ├── sites.json                # Sites de vagas
 │   └── respostas.json            # Respostas pré-definidas
 ├── docker/
-│   └── entrypoint.sh     # Xvfb + Chrome headful + noVNC → sobe o bot
+│   └── entrypoint.sh     # Xvfb + Chrome headful → sobe o bot
 ├── bin/
 │   └── officeboy            # Atalho único: up/down/logs/status (auto-detecta o modo)
-├── Dockerfile            # Imagem: node:22 + Chrome + Xvfb/noVNC
+├── Dockerfile            # Imagem: node:22 + Chrome + Xvfb
 ├── docker-compose.yml    # Dois serviços: bot (Chrome no container) e bot-host (Chrome do host)
 ├── Makefile              # Atalhos: make up / make down / make logs
 ├── .env.example
@@ -602,7 +593,7 @@ officeboy/
 - [x] ~~Mensagem automática para recrutadores~~
 - [x] ~~Multi-LLM (OpenRouter principal + Ollama local + Gemini auxiliar)~~
 - [x] ~~Anonimização de dados antes de enviar ao LLM~~
-- [x] ~~Docker support (bot + Chrome headful + noVNC via compose)~~
+- [x] ~~Docker support (bot + Chrome headful via compose)~~
 - [x] ~~Tracking de custo de tokens~~
 
 ---
