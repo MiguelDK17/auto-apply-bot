@@ -20,11 +20,19 @@
 #   ./bin/jobbot watch uninstall desinstala
 #   ./bin/jobbot watch run       roda em foreground (Ctrl+C sai)
 #
+# Aliases (atalhos no PATH):
+#   ./bin/jobbot alias install [nome]   cria <nome> e <nome>-up/-down/... no PATH
+#   ./bin/jobbot alias uninstall [nome]
+#   ./bin/jobbot alias list [nome]
+#
 # As portas ficam no .env (BOT_UI_PORT, BOT_NOVNC_PORT, BOT_CDP_PORT).
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-
+# Resolve o caminho REAL do script (necessário quando é chamado por symlink
+# em ~/.local/bin — sem isso, o cd相对 ao symlink quebraria).
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PROJETO_DIR="$(dirname "$(dirname "$SCRIPT_PATH")")"
+cd "$PROJETO_DIR"
 # Carrega o .env sem exportar commented lines.
 if [ -f .env ]; then
   set -a
@@ -151,6 +159,61 @@ cmd_rebuild() {
   cmd_up "${1:-auto}"
 }
 
+# ========== ALIASES (atalhos no PATH) ==========
+# Cria comandos curtos no ~/.local/bin, ex.: `officebot up`, `officebot-up`.
+# São symlinks para este script — trocar o nome do projeto é só rodar de novo.
+
+ALIAS_DIR="${BOT_ALIAS_DIR:-$HOME/.local/bin}"
+
+cmd_alias() {
+  local sub="${1:-help}"
+  shift || true
+
+  case "$sub" in
+    install)
+      local nome="${1:-${BOT_ALIAS:-jobbot}}"
+      mkdir -p "$ALIAS_DIR"
+
+      # 1) comando principal: <nome> up / down / logs / ...
+      ln -sf "$SCRIPT_PATH" "$ALIAS_DIR/$nome"
+
+      # 2) atalhos em verbo curto: <nome>-up, <nome>-down, ...
+      for sub_cmd in up down logs status chrome watch rebuild shell ui; do
+        cat > "$ALIAS_DIR/${nome}-${sub_cmd}" <<EOF
+#!/usr/bin/env bash
+exec "${SCRIPT_PATH}" "${sub_cmd}" "\$@"
+EOF
+        chmod +x "$ALIAS_DIR/${nome}-${sub_cmd}"
+      done
+
+      ok "Atalhos criados em ${ALIAS_DIR}:"
+      c "   ${nome} up|down|logs|status|chrome|watch|rebuild|shell|ui"
+      c "   ${nome}-up, ${nome}-down, ${nome}-logs, ${nome}-status, ${nome}-chrome ..."
+
+      # Garante o PATH no shell atual/futuro
+      if ! echo ":$PATH:" | grep -q ":$ALIAS_DIR:"; then
+        warn "PATH não inclui $ALIAS_DIR — adicionando ao ~/.bashrc"
+        {
+          echo ""
+          echo "# Auto Apply Bot — atalhos do bin/jobbot"
+          echo 'export PATH="$HOME/.local/bin:$PATH"'
+        } >> "$HOME/.bashrc"
+        c "   (reabra o terminal ou rode: source ~/.bashrc)"
+      fi
+      ;;
+    uninstall)
+      local nome="${1:-${BOT_ALIAS:-jobbot}}"
+      rm -f "$ALIAS_DIR/$nome" "$ALIAS_DIR/${nome}-"* 2>/dev/null || true
+      ok "Atalhos removidos."
+      ;;
+    list)
+      local nome="${1:-${BOT_ALIAS:-jobbot}}"
+      ls -l "$ALIAS_DIR/$nome" "$ALIAS_DIR/${nome}-"* 2>/dev/null || warn "Nenhum atalho instalado (use: $0 alias install)"
+      ;;
+    *) erro "uso: $0 alias install [nome] | $0 alias uninstall [nome] | $0 alias list" ;;
+  esac
+}
+
 cmd_ui() {
   echo "http://localhost:${UI_PORT}"
 }
@@ -246,6 +309,7 @@ case "${1:-up}" in
   rebuild) shift || true; cmd_rebuild "${1:-auto}" ;;
   chrome) cmd_chrome ;;
   watch) shift || true; cmd_watch "${1:-help}" ;;
+  alias) shift || true; cmd_alias "$@" ;;
   ui) cmd_ui ;;
   help|-h|--help) sed -n '2,25p' "$0" ;;
   *) erro "comando desconhecido: $1"; sed -n '2,25p' "$0"; exit 1 ;;

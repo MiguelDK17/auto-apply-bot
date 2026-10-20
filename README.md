@@ -206,6 +206,26 @@ O projeto é **docker-first**: uma imagem com Node 22, Chrome headful, Xvfb e no
 
 Atalhos equivalentes via `make`: `make up`, `make status`, `make logs`, `make down`, `make shell`, `make rebuild`.
 
+### Atalhos no PATH (sem digitar `./bin/...`)
+
+```bash
+./bin/jobbot alias install officeboy   # cria os atalhos (uma vez)
+```
+
+Cria em `~/.local/bin`:
+
+| Comando | O que faz |
+|---|---|
+| `officeboy up` / `officeboy-up` | sobe o container (+ Chrome) |
+| `officeboy down` / `officeboy-down` | derruba |
+| `officeboy logs` / `officeboy-logs` | segue o log |
+| `officeboy status` / `officeboy-status` | estado, portas, navegador |
+| `officeboy chrome` / `officeboy-chrome` | abre o Chrome nativo |
+| `officeboy watch install` | instala o watcher (systemd) |
+| `officeboy shell` / `officeboy-ui` | shell no container / URL da UI |
+
+Trocar o nome do projeto é só rodar de novo: `./bin/jobbot alias install novonome` (o `alias uninstall` remove os antigos).
+
 | Peça | O que faz |
 |---|---|
 | `bin/jobbot` | **Atalho único**: abre o Chrome nativo, escolhe o modo (host/container), sobe, derruba, logs, status. Lê as portas do `.env` |

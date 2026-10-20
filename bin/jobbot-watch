@@ -20,7 +20,9 @@
 #   systemctl --user enable --now jobbot-watch
 set -uo pipefail
 
-cd "$(dirname "$0")/.."
+# Resolve o caminho real (o script pode ser chamado por symlink).
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+cd "$(dirname "$(dirname "$SCRIPT_PATH")")"
 
 if [ -f .env ]; then
   set -a
