@@ -50,6 +50,9 @@ c() { printf '\033[36m%s\033[0m\n' "$*"; }
 ok() { printf '\033[32m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m%s\033[0m\n' "$*"; }
 erro() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
+# Cores para o help (variáveis, porque heredoc não expande função).
+BOLD=$'\033[1;36m'
+OFF=$'\033[0m'
 
 # Detecta se há um Chrome do host com CDP na porta configurada.
 cdp_do_host_vivo() {
@@ -218,6 +221,62 @@ cmd_ui() {
   echo "http://localhost:${UI_PORT}"
 }
 
+# ========== HELP ==========
+
+cmd_help() {
+  cat <<EOF
+${BOLD}Office Boy${OFF} — agente de candidaturas (Docker + UI de comando)
+
+${BOLD}USO${OFF}
+  officeboy <comando> [opções]
+
+${BOLD}CONTAINER${OFF}
+  up [--host|--local|--no-chrome]  Sobe o container e garante um Chrome de pé.
+                                   Sem flag: usa o Chrome do host (janela real);
+                                   --local: Chrome dentro do container (noVNC);
+                                   --no-chrome: não abre o Chrome nativo.
+  down                              Derruba o container. Preserva volumes e banco.
+  rebuild                           Reconstrói a imagem Docker e sobe de novo.
+  logs                              Segue o log do container em tempo real.
+  status                            Mostra portas, se o Chrome está vivo, os
+                                   containers e se a UI responde.
+  shell                             Abre um shell (bash) dentro do container.
+  ui                                Imprime a URL da UI.
+
+${BOLD}NAVEGADOR${OFF}
+  chrome                            Abre o Chrome NATIVO (janela real, teclado
+                                   real) com a porta de CDP liberada. O profile
+                                   dedicado (~/.chrome-debug-profile) guarda os
+                                   logins entre execuções.
+  watch install                     Instala o watcher como serviço systemd do
+                                   usuário (uma vez). A partir daí, "docker
+                                   compose up -d" já abre o Chrome sozinho.
+  watch start|stop|restart          Controla o serviço do watcher.
+  watch status                      Estado do watcher.
+  watch logs                        Log do watcher.
+  watch uninstall                   Remove o serviço do watcher.
+  watch run                         Roda o watcher em foreground (Ctrl+C sai).
+
+${BOLD}ATALHOS${OFF}
+  alias install [nome]              Cria no PATH: <nome> (CLI completa) e
+                                   <nome>-up, -down, -logs, -status, -chrome...
+  alias uninstall [nome]            Remove os atalhos.
+  alias list [nome]                 Lista os atalhos instalados.
+
+${BOLD}EXEMPLOS${OFF}
+  officeboy up                      # sobe tudo (container + Chrome nativo)
+  officeboy-up                      # o mesmo, pelo atalho curto
+  officeboy status                  # o que está rodando agora
+  officeboy logs                    # acompanha o run
+  docker compose up -d              # com o watcher ativo, abre o Chrome junto
+  officeboy watch install           # ativa o watcher (uma vez só)
+
+${BOLD}URLs${OFF}
+  UI (dashboard): http://localhost:${UI_PORT}
+  Navegador remoto (noVNC, modo container): http://localhost:${NOVNC_PORT}
+EOF
+}
+
 # ========== WATCHER (abre o Chrome quando o container sobe) ==========
 
 WATCH_UNIT="officeboy-watch"
@@ -311,6 +370,6 @@ case "${1:-up}" in
   watch) shift || true; cmd_watch "${1:-help}" ;;
   alias) shift || true; cmd_alias "$@" ;;
   ui) cmd_ui ;;
-  help|-h|--help) sed -n '2,25p' "$0" ;;
-  *) erro "comando desconhecido: $1"; sed -n '2,25p' "$0"; exit 1 ;;
+  help|-h|--help) cmd_help ;;
+  *) erro "comando desconhecido: $1"; echo; cmd_help; exit 1 ;;
 esac
