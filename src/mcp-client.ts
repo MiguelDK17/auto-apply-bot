@@ -68,7 +68,7 @@ export async function conectarPlaywrightMCP(cdpEndpoint: string): Promise<Client
   const transport = new StdioClientTransport({ command, args });
 
   mcpClient = new Client({
-    name: 'job-bot',
+    name: 'officeboy',
     version: '1.0.0',
   });
 

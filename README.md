@@ -1,4 +1,4 @@
-# 🤖 Auto Apply Bot — AI-Powered Job Application Agent
+# 🤖 Office Boy — AI-Powered Job Application Agent
 
 **Agente inteligente que automatiza candidaturas a vagas de emprego usando IA (OpenRouter) + Browser Automation (Playwright MCP).**
 
@@ -100,8 +100,8 @@ O bot navega por portais de vagas (Gupy, Vagas.com, LinkedIn, Indeed), analisa c
 ### 2. Instalação
 
 ```bash
-git clone https://github.com/LuisMIguelFurlanettoSousa/auto-apply-bot.git
-cd auto-apply-bot
+git clone https://github.com/MiguelDK17/officeboy.git
+cd officeboy
 npm install
 ```
 
@@ -149,22 +149,22 @@ Com `CONTROL_MODE=true` no `.env`, o processo sobe **só a UI** (dashboard) e o 
 cp .env.example .env   # e preencha (AGENT_LLM_*, Telegram...)
 # config/*.json precisam existir (mesmo passo 3 acima)
 
-./bin/jobbot chrome    # abre o Chrome NATIVO (janela real, teclado real)
-./bin/jobbot up        # sobe o container — ele usa aquele Chrome
+./bin/officeboy chrome    # abre o Chrome NATIVO (janela real, teclado real)
+./bin/officeboy up        # sobe o container — ele usa aquele Chrome
 # UI em http://localhost:1717
 ```
 
 > **Quer o Chrome abrindo junto com o container, sem comando extra?** Instale o watcher (uma vez só):
 > ```bash
-> ./bin/jobbot watch install   # serviço systemd do usuário
+> ./bin/officeboy watch install   # serviço systemd do usuário
 > ```
-> A partir daí, **`docker compose up -d` já abre o Chrome na sua tela**: o watcher (que roda no host) vê o container subir e abre o navegador com a porta de CDP liberada. Sem o watcher, use `./bin/jobbot up`, que faz o mesmo na hora.
+> A partir daí, **`docker compose up -d` já abre o Chrome na sua tela**: o watcher (que roda no host) vê o container subir e abre o navegador com a porta de CDP liberada. Sem o watcher, use `./bin/officeboy up`, que faz o mesmo na hora.
 >
-> Gerenciar o watcher: `./bin/jobbot watch start|stop|status|logs|uninstall`.
+> Gerenciar o watcher: `./bin/officeboy watch start|stop|status|logs|uninstall`.
 >
 > *Por que é preciso um processo do host:* o Chrome dentro do container roda num display virtual (Xvfb) e **não** aparece no seu desktop — o compositor (KWin/Wayland) não aceita janelas remotas (testado: o Chrome conecta no Wayland, mas a janela não é mapeada). Para a janela existir de verdade, o Chrome precisa ser um processo do host, conectado ao container via CDP.
 
-O atalho `./bin/jobbot` resolve o resto: escolhe o modo do navegador, sobe o container certo e te imprime a URL. Sem ele, o equivalente é:
+O atalho `./bin/officeboy` resolve o resto: escolhe o modo do navegador, sobe o container certo e te imprime a URL. Sem ele, o equivalente é:
 
 ```bash
 docker compose build
@@ -173,16 +173,16 @@ docker compose up -d              # usa o Chrome do host (se estiver no ar)
 
 **Por que o Chrome do host e não o do container:** o Chrome do container vive num display virtual (Xvfb) e só aparece espelhado via noVNC — sem teclado, sem ergonomia. No host, é o **Chrome de verdade**: janela nativa, teclado, mouse, Extensões, seu bookmarks.
 
-> ⚠️ **O profile do Chrome precisa ser dedicado** (`~/.chrome-debug-profile`): desde o Chrome 136, o navegador recusa depuração remota no profile padrão (o do seu dia a dia) — e ele já fica travado pelo Chrome aberto normalmente. O `./bin/jobbot chrome` cria esse profile na primeira vez; os logins ficam salvos nele para sempre.
+> ⚠️ **O profile do Chrome precisa ser dedicado** (`~/.chrome-debug-profile`): desde o Chrome 136, o navegador recusa depuração remota no profile padrão (o do seu dia a dia) — e ele já fica travado pelo Chrome aberto normalmente. O `./bin/officeboy chrome` cria esse profile na primeira vez; os logins ficam salvos nele para sempre.
 
 Os dois modos de navegador:
 
 | Modo | Comando | Navegador | Login |
 |---|---|---|---|
-| **host** (padrão) | `./bin/jobbot up` | o Chrome **que você tem aberto** (janela real) | o seu, no profile dedicado |
-| **container** | `./bin/jobbot up --local` | Chrome **dentro** do container | via noVNC: `http://localhost:7900` |
+| **host** (padrão) | `./bin/officeboy up` | o Chrome **que você tem aberto** (janela real) | o seu, no profile dedicado |
+| **container** | `./bin/officeboy up --local` | Chrome **dentro** do container | via noVNC: `http://localhost:7900` |
 
-`./bin/jobbot up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container (com noVNC) — nunca fica sem navegador.
+`./bin/officeboy up` (sem flag) **detecta sozinho**: se houver um Chrome com CDP na `BOT_CDP_PORT`, usa o do host; senão sobe o do container (com noVNC) — nunca fica sem navegador.
 
 **Modo UI (padrão no Docker):** o container sobe **só o dashboard** — o agente **não** roda sozinho (zero cota gasta até você pedir). Em `http://localhost:1717` você tem os botões **▶ Iniciar bot** / **⏹ Parar**, o checkbox de dry-run e o log ao vivo. O run acontece em um processo filho, então dá para parar no meio.
 
@@ -197,11 +197,11 @@ Os dois modos de navegador:
 O projeto é **docker-first**: uma imagem com Node 22, Chrome headful, Xvfb e noVNC, e um **control server** que transforma o container em uma UI de comando.
 
 ```bash
-./bin/jobbot chrome     # abre o Chrome nativo (janela real, teclado real)
-./bin/jobbot up         # sobe o container (usa o Chrome do host se existir)
-./bin/jobbot status     # estado, portas e se a UI responde
-./bin/jobbot logs       # segue o log
-./bin/jobbot down       # derruba (preserva volumes e banco)
+./bin/officeboy chrome     # abre o Chrome nativo (janela real, teclado real)
+./bin/officeboy up         # sobe o container (usa o Chrome do host se existir)
+./bin/officeboy status     # estado, portas e se a UI responde
+./bin/officeboy logs       # segue o log
+./bin/officeboy down       # derruba (preserva volumes e banco)
 ```
 
 Atalhos equivalentes via `make`: `make up`, `make status`, `make logs`, `make down`, `make shell`, `make rebuild`.
@@ -209,7 +209,7 @@ Atalhos equivalentes via `make`: `make up`, `make status`, `make logs`, `make do
 ### Atalhos no PATH (sem digitar `./bin/...`)
 
 ```bash
-./bin/jobbot alias install officeboy   # cria os atalhos (uma vez)
+./bin/officeboy alias install officeboy   # cria os atalhos (uma vez)
 ```
 
 Cria em `~/.local/bin`:
@@ -224,12 +224,12 @@ Cria em `~/.local/bin`:
 | `officeboy watch install` | instala o watcher (systemd) |
 | `officeboy shell` / `officeboy-ui` | shell no container / URL da UI |
 
-Trocar o nome do projeto é só rodar de novo: `./bin/jobbot alias install novonome` (o `alias uninstall` remove os antigos).
+Trocar o nome do projeto é só rodar de novo: `./bin/officeboy alias install novonome` (o `alias uninstall` remove os antigos).
 
 | Peça | O que faz |
 |---|---|
-| `bin/jobbot` | **Atalho único**: abre o Chrome nativo, escolhe o modo (host/container), sobe, derruba, logs, status. Lê as portas do `.env` |
-| `bin/jobbot-watch` | **Watcher host-side**: abre o Chrome nativo quando o container sobe (é o que faz `docker compose up -d` abrir o navegador). `make watch-install` instala como serviço systemd |
+| `bin/officeboy` | **Atalho único**: abre o Chrome nativo, escolhe o modo (host/container), sobe, derruba, logs, status. Lê as portas do `.env` |
+| `bin/officeboy-watch` | **Watcher host-side**: abre o Chrome nativo quando o container sobe (é o que faz `docker compose up -d` abrir o navegador). `make watch-install` instala como serviço systemd |
 | `Makefile` | Atalhos `make up` / `make down` / `make logs` / `make watch`… delegando para os scripts |
 | `Dockerfile` | Imagem única: `node:22-bookworm-slim` + `google-chrome-stable` + `xvfb`/`x11vnc`/`novnc` + `@playwright/mcp` pré-instalado |
 | `docker/entrypoint.sh` | Escolhe o navegador (externo → local), sobe Xvfb/noVNC/Chrome quando preciso, **watchdog** mantém o Chrome vivo, e executa o bot/UI |
@@ -244,7 +244,7 @@ Detalhes que importam:
 - **Custo dinâmico**: quando o provedor reporta o custo real (OpenRouter), o dashboard mostra o valor exato, não uma estimativa.
 - **`CONTROL_MODE=false`** volta ao auto-run, para uso com cron.
 
-> ⚠️ **`docker compose run`** (o do Docker puro) **não publica as portas** do serviço e cria um container *paralelo*, sem derrubar o que já está de pé — por isso o atalho `jobbot` usa `up`/`down`.
+> ⚠️ **`docker compose run`** (o do Docker puro) **não publica as portas** do serviço e cria um container *paralelo*, sem derrubar o que já está de pé — por isso o atalho `officeboy` usa `up`/`down`.
 
 ---
 
@@ -371,7 +371,7 @@ Resultados válidos: `aguardando`, `respondido`, `entrevista`, `oferta`, `rejeit
 
 ## 📄 Currículo Tailored + Cover Letter
 
-Diferente de outros bots que enviam o mesmo currículo para todas as vagas, o Auto Apply Bot **gera um currículo e carta de apresentação personalizados para cada vaga**:
+Diferente de outros bots que enviam o mesmo currículo para todas as vagas, o Office Boy **gera um currículo e carta de apresentação personalizados para cada vaga**:
 
 1. O agente lê a descrição completa da vaga
 2. Faz uma chamada separada ao **provider auxiliar** (`LLM_AUX_*`) com prompt ultra-restritivo
@@ -541,7 +541,7 @@ GEMINI_API_KEY=...
 ## 📁 Estrutura do Projeto
 
 ```
-auto-apply-bot/
+officeboy/
 ├── src/
 │   ├── index.ts          # Entry point + orquestração
 │   ├── agente.ts         # Loop do agente (SDK OpenAI / OpenRouter)
@@ -571,7 +571,7 @@ auto-apply-bot/
 ├── docker/
 │   └── entrypoint.sh     # Xvfb + Chrome headful + noVNC → sobe o bot
 ├── bin/
-│   └── jobbot            # Atalho único: up/down/logs/status (auto-detecta o modo)
+│   └── officeboy            # Atalho único: up/down/logs/status (auto-detecta o modo)
 ├── Dockerfile            # Imagem: node:22 + Chrome + Xvfb/noVNC
 ├── docker-compose.yml    # Dois serviços: bot (Chrome no container) e bot-host (Chrome do host)
 ├── Makefile              # Atalhos: make up / make down / make logs

@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# jobbot — atalho único para o ciclo de vida do bot em Docker.
+# officeboy — atalho único para o ciclo de vida do bot em Docker.
 #
-#   ./bin/jobbot chrome     abre o Chrome NATIVO (janela real, teclado real)
-#   ./bin/jobbot up          sobe o container (usa o Chrome do host se existir)
-#   ./bin/jobbot up --local  força o Chrome dentro do container (noVNC)
-#   ./bin/jobbot down        derruba tudo
-#   ./bin/jobbot logs        segue o log (Ctrl+C sai)
-#   ./bin/jobbot status      mostra o estado
-#   ./bin/jobbot shell       abre um shell no container
-#   ./bin/jobbot rebuild     reconstrói a imagem e sobe de novo
-#   ./bin/jobbot ui          só imprime a URL da UI
+#   ./bin/officeboy chrome     abre o Chrome NATIVO (janela real, teclado real)
+#   ./bin/officeboy up          sobe o container (usa o Chrome do host se existir)
+#   ./bin/officeboy up --local  força o Chrome dentro do container (noVNC)
+#   ./bin/officeboy down        derruba tudo
+#   ./bin/officeboy logs        segue o log (Ctrl+C sai)
+#   ./bin/officeboy status      mostra o estado
+#   ./bin/officeboy shell       abre um shell no container
+#   ./bin/officeboy rebuild     reconstrói a imagem e sobe de novo
+#   ./bin/officeboy ui          só imprime a URL da UI
 #
 # Watcher (abre o Chrome sozinho quando o container sobe):
-#   ./bin/jobbot watch install   instala como serviço do systemd (1x)
-#   ./bin/jobbot watch start     liga o serviço
-#   ./bin/jobbot watch stop      pausa
-#   ./bin/jobbot watch status    estado do serviço
-#   ./bin/jobbot watch logs      log do watcher
-#   ./bin/jobbot watch uninstall desinstala
-#   ./bin/jobbot watch run       roda em foreground (Ctrl+C sai)
+#   ./bin/officeboy watch install   instala como serviço do systemd (1x)
+#   ./bin/officeboy watch start     liga o serviço
+#   ./bin/officeboy watch stop      pausa
+#   ./bin/officeboy watch status    estado do serviço
+#   ./bin/officeboy watch logs      log do watcher
+#   ./bin/officeboy watch uninstall desinstala
+#   ./bin/officeboy watch run       roda em foreground (Ctrl+C sai)
 #
 # Aliases (atalhos no PATH):
-#   ./bin/jobbot alias install [nome]   cria <nome> e <nome>-up/-down/... no PATH
-#   ./bin/jobbot alias uninstall [nome]
-#   ./bin/jobbot alias list [nome]
+#   ./bin/officeboy alias install [nome]   cria <nome> e <nome>-up/-down/... no PATH
+#   ./bin/officeboy alias uninstall [nome]
+#   ./bin/officeboy alias list [nome]
 #
 # As portas ficam no .env (BOT_UI_PORT, BOT_NOVNC_PORT, BOT_CDP_PORT).
 set -euo pipefail
@@ -74,7 +74,7 @@ modo() {
 # órfãos com nome aleatório e sem restart policy.
 limpar_containers_run() {
   local ids
-  ids="$(docker ps -aq --filter "name=^auto-apply-bot.*-run-" 2>/dev/null || true)"
+  ids="$(docker ps -aq --filter "name=^officeboy.*-run-" 2>/dev/null || true)"
   if [ -n "$ids" ]; then
     # shellcheck disable=SC2086
     docker rm -f $ids >/dev/null 2>&1 && warn "containers de 'docker compose run' anteriores foram removidos"
@@ -148,8 +148,8 @@ cmd_status() {
 }
 
 cmd_shell() {
-  local cname="auto-apply-bot"
-  docker ps --format '{{.Names}}' | grep -q "^auto-apply-bot-container$" && cname="auto-apply-bot-container"
+  local cname="officeboy"
+  docker ps --format '{{.Names}}' | grep -q "^officeboy-container$" && cname="officeboy-container"
   "${COMPOSE[@]}" exec "$cname" bash
 }
 
@@ -171,7 +171,7 @@ cmd_alias() {
 
   case "$sub" in
     install)
-      local nome="${1:-${BOT_ALIAS:-jobbot}}"
+      local nome="${1:-${BOT_ALIAS:-officeboy}}"
       mkdir -p "$ALIAS_DIR"
 
       # 1) comando principal: <nome> up / down / logs / ...
@@ -195,19 +195,19 @@ EOF
         warn "PATH não inclui $ALIAS_DIR — adicionando ao ~/.bashrc"
         {
           echo ""
-          echo "# Auto Apply Bot — atalhos do bin/jobbot"
+          echo "# Office Boy — atalhos do bin/officeboy"
           echo 'export PATH="$HOME/.local/bin:$PATH"'
         } >> "$HOME/.bashrc"
         c "   (reabra o terminal ou rode: source ~/.bashrc)"
       fi
       ;;
     uninstall)
-      local nome="${1:-${BOT_ALIAS:-jobbot}}"
+      local nome="${1:-${BOT_ALIAS:-officeboy}}"
       rm -f "$ALIAS_DIR/$nome" "$ALIAS_DIR/${nome}-"* 2>/dev/null || true
       ok "Atalhos removidos."
       ;;
     list)
-      local nome="${1:-${BOT_ALIAS:-jobbot}}"
+      local nome="${1:-${BOT_ALIAS:-officeboy}}"
       ls -l "$ALIAS_DIR/$nome" "$ALIAS_DIR/${nome}-"* 2>/dev/null || warn "Nenhum atalho instalado (use: $0 alias install)"
       ;;
     *) erro "uso: $0 alias install [nome] | $0 alias uninstall [nome] | $0 alias list" ;;
@@ -220,7 +220,7 @@ cmd_ui() {
 
 # ========== WATCHER (abre o Chrome quando o container sobe) ==========
 
-WATCH_UNIT="jobbot-watch"
+WATCH_UNIT="officeboy-watch"
 WATCH_DIR="${HOME}/.config/systemd/user"
 WATCH_FILE="${WATCH_DIR}/${WATCH_UNIT}.service"
 
@@ -232,12 +232,12 @@ cmd_watch() {
     install)
       mkdir -p "$WATCH_DIR"
       # O unit aponta para o próprio script (caminho absoluto do usuário).
-      sed "s|%h/auto-apply-bot|$(pwd)|g" bin/jobbot-watch.service > "$WATCH_FILE"
+      sed "s|%h/officeboy|$(pwd)|g" bin/officeboy-watch.service > "$WATCH_FILE"
       systemctl --user daemon-reload
       systemctl --user enable --now "$WATCH_UNIT"
       ok "Watcher instalado e ativo."
-      c "   status:  ./bin/jobbot watch status"
-      c "   desinstalar: ./bin/jobbot watch uninstall"
+      c "   status:  ./bin/officeboy watch status"
+      c "   desinstalar: ./bin/officeboy watch uninstall"
       ;;
     uninstall)
       systemctl --user disable --now "$WATCH_UNIT" 2>/dev/null || true
@@ -252,12 +252,12 @@ cmd_watch() {
       if systemctl --user is-active --quiet "$WATCH_UNIT"; then
         ok "Watcher ATIVO (o Chrome abre junto com o container)"
       else
-        warn "Watcher inativo — use './bin/jobbot watch install' para ativar"
+        warn "Watcher inativo — use './bin/officeboy watch install' para ativar"
       fi
       systemctl --user --no-pager status "$WATCH_UNIT" 2>/dev/null | head -8 || true
       ;;
     logs)    journalctl --user -u "$WATCH_UNIT" -f ;;
-    run|"")  exec "$(dirname "$0")/jobbot-watch" ;;
+    run|"")  exec "$(dirname "$0")/officeboy-watch" ;;
     *) erro "subcomando inválido: watch $sub"; exit 1 ;;
   esac
 }

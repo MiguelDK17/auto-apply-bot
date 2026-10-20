@@ -51,7 +51,7 @@ export async function enviarRelatorioEmail(assunto: string, corpoHTML: string): 
     });
 
     await transporter.sendMail({
-      from: `"Job Bot" <${emailConfig.user}>`,
+      from: `"Office Boy" <${emailConfig.user}>`,
       to: emailConfig.destinatario,
       subject: assunto,
       html: corpoHTML,
@@ -87,7 +87,7 @@ export function gerarHTMLRelatorio(dados: {
 <head><meta charset="UTF-8"></head>
 <body style="font-family: -apple-system, sans-serif; background: #f5f5f5; padding: 24px;">
   <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <h1 style="color: #2c3e50; margin-bottom: 8px;">Job Bot — Relatório</h1>
+    <h1 style="color: #2c3e50; margin-bottom: 8px;">Office Boy — Relatório</h1>
     <p style="color: #7f8c8d; margin-top: 0;">Modo: <strong>${modo}</strong></p>
 
     <div style="background: #ecf0f1; border-radius: 8px; padding: 16px; margin: 16px 0;">
@@ -103,7 +103,7 @@ export function gerarHTMLRelatorio(dados: {
     <ul>${listaErros}</ul>
 
     <hr style="border: none; border-top: 1px solid #ecf0f1; margin: 24px 0;">
-    <p style="color: #bdc3c7; font-size: 12px;">Gerado automaticamente pelo Job Bot</p>
+    <p style="color: #bdc3c7; font-size: 12px;">Gerado automaticamente pelo Office Boy</p>
   </div>
 </body>
 </html>`;

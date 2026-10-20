@@ -1,7 +1,7 @@
 # ============================================================
-# auto-apply-bot — pilha completa (bot + Chrome headful + noVNC).
+# officeboy — pilha completa (bot + Chrome headful + noVNC).
 #
-# Use o atalho `./bin/jobbot up` — ele escolhe o modo certo sozinho e
+# Use o atalho `./bin/officeboy up` — ele escolhe o modo certo sozinho e
 # resolve as portas. Este arquivo existe para quem quiser o Docker puro.
 #
 # PORTAS (definidas no .env):
@@ -14,15 +14,15 @@
 #   host   → usa o Chrome do HOST (já logado) via network_mode: host
 # ============================================================
 
-name: auto-apply-bot
+name: officeboy
 
 x-comum: &comum
   build: .
-  image: auto-apply-bot:latest
-  # O watcher host-side (bin/jobbot-watch) usa esta label para abrir o Chrome
+  image: officeboy:latest
+  # O watcher host-side (bin/officeboy-watch) usa esta label para abrir o Chrome
   # nativo no momento em que o container sobe.
   labels:
-    - "jobbot.autostart=true"
+    - "officeboy.autostart=true"
   env_file:
     - .env
   volumes:
@@ -43,10 +43,10 @@ services:
   # Se o Chrome do host não estiver no ar, o entrypoint cai para o Chrome
   # próprio do container (com noVNC) em vez de morrer.
   #
-  # Para abrir o Chrome do host:  ./bin/jobbot chrome
+  # Para abrir o Chrome do host:  ./bin/officeboy chrome
   bot:
     <<: *comum
-    container_name: auto-apply-bot
+    container_name: officeboy
     restart: unless-stopped
     network_mode: host
     environment:
@@ -62,7 +62,7 @@ services:
   # Útil para rodar 24/7 numa VPS, onde não existe desktop.
   bot-container:
     <<: *comum
-    container_name: auto-apply-bot-container
+    container_name: officeboy-container
     profiles: ["container"]
     restart: unless-stopped
     ports:

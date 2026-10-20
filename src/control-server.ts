@@ -317,7 +317,17 @@ export function iniciarControlServer(port: number, host: string): void {
   });
 
   srv.on('error', (err) => {
+    const e = err as NodeJS.ErrnoException;
+    if (e.code === 'EADDRINUSE') {
+      log('ERRO', `Control server: a porta ${port} já está em uso.`);
+      log('ERRO', 'Outro container do bot provavelmente está rodando. Rode "./bin/officeboy down" e tente de novo.');
+      log('ERRO', 'Se não for o bot, mude BOT_UI_PORT no .env.');
+      // Sai com erro: o container reinicia (restart: unless-stopped) e o
+      // problema fica visível no log, em vez de um loop silencioso.
+      process.exit(1);
+    }
     log('ERRO', `Control server: falha na porta ${port} — ${err.message}`);
+    process.exit(1);
   });
 
   srv.listen(port, host, () => {

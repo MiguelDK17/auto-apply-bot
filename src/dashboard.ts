@@ -91,13 +91,13 @@ export function gerarHTML(controle?: ControleUI): string {
   <script>
     (function () {
       const btn = document.getElementById('btnTema');
-      const salvo = localStorage.getItem('jobbot-tema');
+      const salvo = localStorage.getItem('officeboy-tema');
       if (salvo === 'light') document.documentElement.setAttribute('data-theme', 'light');
       if (btn) btn.addEventListener('click', () => {
         const claro = document.documentElement.getAttribute('data-theme') === 'light';
         if (claro) document.documentElement.removeAttribute('data-theme');
         else document.documentElement.setAttribute('data-theme', 'light');
-        localStorage.setItem('jobbot-tema', claro ? 'dark' : 'light');
+        localStorage.setItem('officeboy-tema', claro ? 'dark' : 'light');
       });
     })();
   </script>`;
@@ -107,7 +107,7 @@ export function gerarHTML(controle?: ControleUI): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Job Bot - Dashboard</title>
+<title>Office Boy - Dashboard</title>
 <style>
   /* Paleta Solosis Psychic Teal */
   :root {
@@ -189,7 +189,7 @@ export function gerarHTML(controle?: ControleUI): string {
 </head>
 <body>
   <header>
-    <h1>Job Bot - Dashboard</h1>
+    <h1>Office Boy - Dashboard</h1>
     <button class="btn ghost" id="btnTema" title="Alternar tema">◐ Tema</button>
   </header>
 
@@ -269,14 +269,14 @@ function gerarPainelControle(controle: ControleUI): string {
 
     // Tema: começa salvo, senão escuro (padrão).
     const btnTema = document.getElementById('btnTema');
-    const temaSalvo = localStorage.getItem('jobbot-tema');
+    const temaSalvo = localStorage.getItem('officeboy-tema');
     if (temaSalvo === 'light') document.documentElement.setAttribute('data-theme', 'light');
     if (btnTema) btnTema.addEventListener('click', () => {
       const atual = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
       const novo = atual === 'light' ? 'dark' : 'light';
       if (novo === 'light') document.documentElement.setAttribute('data-theme', 'light');
       else document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('jobbot-tema', novo);
+      localStorage.setItem('officeboy-tema', novo);
     });
 
     // Escape obrigatório: o log carrega conteúdo de páginas de vagas
@@ -347,7 +347,7 @@ function gerarPainelControle(controle: ControleUI): string {
         // A posição do log é salva antes (e restaurada no load) para não
         // perder o ponto de leitura a cada reload.
         if (ultimoRodando && !s.rodando) {
-          sessionStorage.setItem('jobbot-log-scroll', String(logBox.scrollTop));
+          sessionStorage.setItem('officeboy-log-scroll', String(logBox.scrollTop));
           location.reload();
           return;
         }
@@ -375,9 +375,9 @@ function gerarPainelControle(controle: ControleUI): string {
     setInterval(atualizar, 2000);
 
     // Restaura a posição do log após um reload (fim de run).
-    const salvo = sessionStorage.getItem('jobbot-log-scroll');
+    const salvo = sessionStorage.getItem('officeboy-log-scroll');
     if (salvo !== null) {
-      sessionStorage.removeItem('jobbot-log-scroll');
+      sessionStorage.removeItem('officeboy-log-scroll');
       setTimeout(() => { logBox.scrollTop = parseInt(salvo, 10) || 0; }, 600);
     }
   </script>`;

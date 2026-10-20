@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# jobbot-watch — daemon host-side que ABRE o Chrome nativo quando o container
+# officeboy-watch — daemon host-side que ABRE o Chrome nativo quando o container
 # do bot sobe.
 #
 # Por que: um Chrome dentro do container roda num display virtual e NÃO
@@ -10,14 +10,14 @@
 # container do bot sobe, abre o Chrome com a porta de CDP liberada.
 #
 # Uso:
-#   ./bin/jobbot-watch              # foreground (Ctrl+C sai)
-#   ./bin/jobbot-watch --once       # checa uma vez e sai
+#   ./bin/officeboy-watch              # foreground (Ctrl+C sai)
+#   ./bin/officeboy-watch --once       # checa uma vez e sai
 #
 # Para iniciar junto com a sessão (uma vez só):
 #   mkdir -p ~/.config/systemd/user
-#   cp bin/jobbot-watch.service ~/.config/systemd/user/
+#   cp bin/officeboy-watch.service ~/.config/systemd/user/
 #   systemctl --user daemon-reload
-#   systemctl --user enable --now jobbot-watch
+#   systemctl --user enable --now officeboy-watch
 set -uo pipefail
 
 # Resolve o caminho real (o script pode ser chamado por symlink).
@@ -33,7 +33,7 @@ fi
 
 CDP_PORT="${BOT_CDP_PORT:-9222}"
 CHROME_PROFILE="${BOT_CHROME_PROFILE:-$HOME/.chrome-debug-profile}"
-LABEL="jobbot.autostart=true"
+LABEL="officeboy.autostart=true"
 ONCE=false
 [ "${1:-}" = "--once" ] && ONCE=true
 

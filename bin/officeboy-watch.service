@@ -1,0 +1,13 @@
+[Unit]
+Description=Office Boy — abre o Chrome nativo quando o container sobe
+After=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/officeboy
+ExecStart=%h/officeboy/bin/officeboy-watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

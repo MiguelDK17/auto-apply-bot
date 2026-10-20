@@ -258,7 +258,7 @@ export function criarClientAgente(config: AgenteConfig): OpenAI {
   const baseURL = config.agentLlmBaseUrl || 'https://openrouter.ai/api/v1';
   // OpenRouter recomenda identificar o app — inofensivo para outros provedores.
   const defaultHeaders = baseURL.includes('openrouter.ai')
-    ? { 'HTTP-Referer': 'https://github.com/MiguelDK17/auto-apply-bot', 'X-Title': 'auto-apply-bot' }
+    ? { 'HTTP-Referer': 'https://github.com/MiguelDK17/officeboy', 'X-Title': 'officeboy' }
     : undefined;
   return new OpenAI({
     baseURL,
@@ -653,7 +653,7 @@ Lembre-se: use aguardar entre cada acao, verifique duplicatas, e varie as respos
           salvarRecovery(iteracao, sitesAtivos.map(s => s.nome));
           respostaFinal = `Erro durante execucao: ${msg}`;
           saiuComErroFatal = true;
-          await notificarErro(`Job Bot parado: rate limit persistente (${errosConsecutivos}x) no modelo ${config.agentLlmModel}. ${respostaFinal}`);
+          await notificarErro(`Office Boy parado: rate limit persistente (${errosConsecutivos}x) no modelo ${config.agentLlmModel}. ${respostaFinal}`);
           break;
         }
         const backoff = calcularBackoffRateLimit(errosConsecutivos);

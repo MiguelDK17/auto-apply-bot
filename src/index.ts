@@ -173,7 +173,7 @@ async function executarFluxoPrincipal(config: AgenteConfig): Promise<void> {
   const scoreMedioHoje = obterEstatisticas().hoje.score_medio ?? 0;
 
   await enviarRelatorioEmail(
-    `Job Bot — ${novasCandidaturas} candidatura(s) ${config.dryRun ? '(DRY-RUN)' : ''}`,
+    `Office Boy — ${novasCandidaturas} candidatura(s) ${config.dryRun ? '(DRY-RUN)' : ''}`,
     gerarHTMLRelatorio({
       total: novasCandidaturas,
       empresas: empresasRelatorio,
@@ -194,7 +194,7 @@ async function main() {
   inicializarLogger();
 
   log('INFO', '='.repeat(60));
-  log('INFO', '  JOB BOT - Agente Inteligente de Candidaturas');
+  log('INFO', '  OFFICE BOY - Agente Inteligente de Candidaturas');
   log('INFO', '='.repeat(60));
 
   // Valida ambiente
