@@ -629,6 +629,12 @@ Este projeto é para fins educacionais e de automação pessoal. Use com respons
 
 ---
 
+## 📜 Créditos
+
+OfficeBoy é um fork de [auto-apply-bot](https://github.com/LuisMIguelFurlanettoSousa/auto-apply-bot),
+criado por Luis Miguel Furlanetto Sousa e licenciado sob MIT.
+
+
 ## 📄 License
 
 MIT License — veja [LICENSE](LICENSE) para detalhes.
